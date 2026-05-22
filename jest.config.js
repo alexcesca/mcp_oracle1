@@ -3,7 +3,15 @@ export default {
   testEnvironment: 'node',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        "useESM": true,
+        "diagnostics": {
+          "ignoreCodes": [151002]
+        }
+      }
+    ],
   },
   testMatch: [
     '**/tests/**/*.test.ts'
@@ -22,9 +30,5 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  }
+  // ts-jest options are provided via `transform` above (globals deprecated)
 }; 

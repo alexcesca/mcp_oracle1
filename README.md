@@ -218,6 +218,37 @@ npm run build
 }
 ```
 
+## **HTTP/SSE Transport**
+
+- **Resumo:** O servidor suporta o transporte HTTP com SSE (Server-Sent Events) conforme a especificação MCP. Neste modo, clientes abrem uma conexão SSE (GET) para receber mensagens do servidor e enviam requisições POST para o endpoint fornecido pelo evento `endpoint`.
+- **Modo padrão:** `stdio` (iniciado via `node dist/index.js` ou `./run-mcp.sh`).
+- **Variáveis de ambiente relevantes:**
+
+  - `MCP_TRANSPORT` — `http` para ativar HTTP/SSE (padrão: `stdio`)
+  - `MCP_HTTP_HOST` — host a ser ligado (padrão: `127.0.0.1`)
+  - `MCP_HTTP_PORT` — porta do servidor HTTP (padrão: `3100`)
+  - `MCP_HTTP_PATH` — caminho do endpoint MCP (padrão: `/mcp`)
+  - `MCP_ALLOWED_ORIGINS` — lista separada por vírgulas de origins permitidos (opcional)
+  - `MCP_SESSION_MODE` — `stateful` (padrão) ou `stateless`
+
+- **Como iniciar (exemplo local):**
+
+```bash
+# usar o script npm incluído (inicia em 127.0.0.1:3100)
+npm run start:http
+
+# ou explicitamente
+MCP_TRANSPORT=http MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js
+```
+
+- **Segurança:** o servidor valida o header `Origin` para mitigar ataques de DNS rebinding. Em implantação local, o servidor por padrão liga somente em `127.0.0.1`.
+
+- **Comportamento do cliente:**
+  - Cliente abre `GET http://127.0.0.1:3100/mcp` para iniciar SSE. O servidor responde com um evento `endpoint` que contém a URI para envio de mensagens (POST).
+  - O cliente envia mensagens JSON-RPC via `POST` para a URI indicada.
+
+Adicione testes de integração HTTP/SSE para verificar o evento `endpoint` e o fluxo POST/response quando desejar validar interoperabilidade.
+
 ### Verificar configuração MCP
 
 Depois de configurar o MCP, você pode verificar se está funcionando corretamente:
