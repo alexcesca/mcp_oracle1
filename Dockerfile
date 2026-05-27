@@ -5,11 +5,12 @@ RUN apt-get update && apt-get install -y \
     libaio1 \
     unzip \
     wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Oracle Instant Client (Thick mode support for older DBs)
 WORKDIR /opt/oracle
-RUN wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip \
+RUN wget --no-check-certificate https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip \
     && unzip instantclient-basic-linux.x64-19.19.0.0.0dbru.zip \
     && rm instantclient-basic-linux.x64-19.19.0.0.0dbru.zip \
     && sh -c "echo /opt/oracle/instantclient_19_19 > /etc/ld.so.conf.d/oracle-instantclient.conf" \

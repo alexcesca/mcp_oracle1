@@ -39,7 +39,7 @@ registerAllTools(server, getOracleService);
 const DEFAULT_HTTP_HOST = '127.0.0.1';
 const DEFAULT_HTTP_PORT = 3100;
 const DEFAULT_HTTP_PATH = '/mcp';
-const DEFAULT_SESSION_MODE = 'stateful';
+const DEFAULT_SESSION_MODE = 'statelesss';
 
 function normalizePath(path: string): string {
   let normalized = path.trim();
@@ -120,6 +120,9 @@ function validateOrigin(req: IncomingMessage, allowedOrigins: string[]): void {
   if (!origin) {
     return;
   }
+  if (allowedOrigins.includes('*')) {
+    return;
+  }
   if (!allowedOrigins.includes(origin)) {
     throw new Error(`Origin header '${origin}' is not allowed`);
   }
@@ -150,16 +153,16 @@ async function runServer(overrides?: Partial<HttpConfig>) {
     console.error("Criando Servidor MCP Oracle DB...");
     console.error("Info do servidor: oracle-db-mcp-server");
     console.error("Versão:", VERSION);
-    
+
     // Validar variáveis de ambiente
     const requiredVars = ['ORACLE_HOST', 'ORACLE_USERNAME', 'ORACLE_PASSWORD'];
     const missingVars = requiredVars.filter(varName => !process.env[varName] && !process.env.ORACLE_CONNECTION_STRING);
-    
+
     if (missingVars.length > 0 && !process.env.ORACLE_CONNECTION_STRING) {
       console.error("Aviso: Variáveis de ambiente ausentes:", missingVars.join(', '));
       console.error("Defina as variáveis individuais ou use ORACLE_CONNECTION_STRING");
     }
-    
+
     // Log de configuração (sem a senha)
     console.error("Configuração do Oracle:");
     console.error("- ORACLE_HOST:", process.env.ORACLE_HOST || 'localhost');
@@ -178,11 +181,11 @@ async function runServer(overrides?: Partial<HttpConfig>) {
 
     const transport = isHttpMode
       ? new StreamableHTTPServerTransport({
-          sessionIdGenerator: httpConfig.sessionMode === 'stateful' ? () => randomUUID() : undefined,
-          allowedOrigins: httpConfig.allowedOrigins,
-          enableDnsRebindingProtection: true,
-          retryInterval: 3000,
-        })
+        sessionIdGenerator: httpConfig.sessionMode === 'stateful' ? () => randomUUID() : undefined,
+        allowedOrigins: httpConfig.allowedOrigins,
+        enableDnsRebindingProtection: false,
+        retryInterval: 3000,
+      })
       : new StdioServerTransport();
 
     const httpTransport = isHttpMode ? transport as StreamableHTTPServerTransport : undefined;

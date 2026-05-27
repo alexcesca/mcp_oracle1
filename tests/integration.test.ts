@@ -88,7 +88,7 @@ describe('Testes de Integração Oracle MCP', () => {
       return;
     }
 
-    const result = await oracleService.executeQuery('SELECT * FROM tabela_inexistente');
+    const result = await oracleService.executeQuery('SELECT 1 FROM dual');
     
     expect(result.success).toBe(false);
     expect(result.error).toBeTruthy();

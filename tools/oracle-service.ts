@@ -37,7 +37,7 @@ export class OracleService {
 
   private loadConfigFromEnv(): OracleConnectionConfig {
     const connectionString = process.env.ORACLE_CONNECTION_STRING;
-    
+
     if (connectionString) {
       const parsed = parseOracleConnectionString(connectionString);
       return {
@@ -78,11 +78,11 @@ export class OracleService {
       oracledb.autoCommit = false;
       oracledb.maxRows = 1000;
       oracledb.fetchArraySize = this.config.fetchSize || 100;
-      
+
       // Para conexões antigas (anteriores a 11g), usar modo Thick
       if (process.env.ORACLE_OLD_CRYPTO === 'true') {
         console.error('🔧 Configurando modo Thick para suporte a Oracle antigo...');
-        
+
         // Configurar o diretório do cliente Oracle
         const libDir = process.env.ORACLE_CLIENT_LIB_DIR;
         if (libDir) {
@@ -99,7 +99,7 @@ export class OracleService {
             console.error('💡 SOLUÇÃO 1: Continuar com modo Thin (pode falhar com Oracle muito antigo)');
             console.error('💡 SOLUÇÃO 2: Instalar o Oracle Instant Client e configurar ORACLE_CLIENT_LIB_DIR');
             console.error('📖 Guia: https://node-oracledb.readthedocs.io/en/latest/user_guide/installation.html');
-            
+
             // Não lançar erro, continuar com modo Thin
           }
         }
@@ -148,14 +148,14 @@ export class OracleService {
       // Usar configurações compatíveis com versões antigas
       poolConfig.events = false;
       poolConfig.externalAuth = false;
-      
+
       // Configurações adicionais para Oracle antigo
       poolConfig.edition = '';
-      
+
       // Reduzir timeouts para versões antigas
       poolConfig.poolTimeout = Math.min(poolConfig.poolTimeout, 30);
       poolConfig.queueTimeout = 10000; // 10 segundos
-      
+
       console.error('Configurando pool para Oracle antigo com crypto legacy');
     }
 
@@ -166,7 +166,7 @@ export class OracleService {
   // Verificar estado de saúde da conexão
   async healthCheck(): Promise<OracleResult<ConnectionStatus>> {
     const startTime = Date.now();
-    
+
     try {
       if (!this.isInitialized) {
         throw new Error('Oracle DB não está inicializado');
@@ -174,14 +174,14 @@ export class OracleService {
 
       const pool = await this.createPool();
       const connection = await pool.getConnection();
-      
+
       try {
         // Verificar conexão básica
         const result = await connection.execute('SELECT 1 FROM DUAL');
-        
+
         // Obter informações do pool
         const poolStatus = pool.poolStatistics || {} as any;
-        
+
         // Obter informações da sessão
         const sessionResult = await connection.execute(`
           SELECT 
@@ -203,7 +203,7 @@ export class OracleService {
         const versionResult = await connection.execute(`
           SELECT BANNER FROM V$VERSION WHERE BANNER LIKE 'Oracle%'
         `);
-        
+
         const version = (versionResult.rows as any[])[0]?.BANNER || 'Desconhecida';
 
         const status: ConnectionStatus = {
@@ -258,11 +258,11 @@ export class OracleService {
   // Executar consulta SQL
   async executeQuery(sql: string, binds: any = [], options: QueryOptions = {}): Promise<OracleResult<QueryResult>> {
     const startTime = Date.now();
-    
+
     try {
       const pool = await this.createPool();
       const connection = await pool.getConnection();
-      
+
       try {
         const executeOptions = {
           outFormat: options.outFormat || oracledb.OUT_FORMAT_OBJECT,
@@ -274,7 +274,7 @@ export class OracleService {
         };
 
         const result = await connection.execute(sql, binds, executeOptions);
-        
+
         const queryResult: QueryResult = {
           rows: result.rows as any[],
           metadata: result.metaData?.map((col: any) => ({
@@ -315,11 +315,11 @@ export class OracleService {
   // Executar comando SQL (INSERT, UPDATE, DELETE, etc.)
   async executeCommand(sql: string, binds: any = [], options: ExecuteOptions = {}): Promise<OracleResult<ExecuteResult>> {
     const startTime = Date.now();
-    
+
     try {
       const pool = await this.createPool();
       const connection = await pool.getConnection();
-      
+
       try {
         const executeOptions = {
           outFormat: options.outFormat || oracledb.OUT_FORMAT_OBJECT,
@@ -330,7 +330,7 @@ export class OracleService {
         };
 
         const result = await connection.execute(sql, binds, executeOptions);
-        
+
         const executeResult: ExecuteResult = {
           rowsAffected: result.rowsAffected || 0,
           lastRowid: result.lastRowid,
@@ -362,32 +362,36 @@ export class OracleService {
   // Obter lista de tabelas
   async getTables(owner?: string): Promise<OracleResult<TableInfo[]>> {
     const startTime = Date.now();
-    
+
     let sql = `
       SELECT 
-        table_name,
+        t.table_name,
         'TABLE' as table_type,
-        owner,
-        comments,
-        num_rows,
-        last_analyzed
-      FROM all_tables 
+        t.owner,
+        c.comments,
+        t.num_rows,
+        t.last_analyzed
+      FROM all_tables t
+      LEFT JOIN all_tab_comments c
+        ON c.owner = t.owner
+        AND c.table_name = t.table_name
+        AND c.table_type = 'TABLE'
     `;
-    
+
     const binds: any[] = [];
-    
+
     if (owner) {
-      sql += ` WHERE owner = :owner`;
+      sql += ` WHERE t.owner = :owner`;
       binds.push(owner.toUpperCase());
     } else {
-      sql += ` WHERE owner = USER`;
+      sql += ` WHERE t.owner = USER`;
     }
-    
-    sql += ` ORDER BY table_name`;
+
+    sql += ` ORDER BY t.table_name`;
 
     try {
       const result = await this.executeQuery(sql, binds);
-      
+
       if (result.success && result.data) {
         const tables: TableInfo[] = result.data.rows.map((row: any) => ({
           tableName: row.TABLE_NAME,
@@ -419,39 +423,39 @@ export class OracleService {
   // Obter colunas de uma tabela
   async getTableColumns(tableName: string, owner?: string): Promise<OracleResult<TableColumnInfo[]>> {
     const startTime = Date.now();
-    
+
     let sql = `
       SELECT 
-        column_name,
-        data_type,
-        data_length,
-        data_precision,
-        data_scale,
-        nullable,
-        data_default,
-        column_id,
-        comments
+        c.column_name,
+        c.data_type,
+        c.data_length,
+        c.data_precision,
+        c.data_scale,
+        c.nullable,
+        c.data_default,
+        c.column_id,
+        cc.comments
       FROM all_tab_columns c
       LEFT JOIN all_col_comments cc ON c.owner = cc.owner 
         AND c.table_name = cc.table_name 
         AND c.column_name = cc.column_name
       WHERE c.table_name = :tableName
     `;
-    
+
     const binds: any[] = [tableName.toUpperCase()];
-    
+
     if (owner) {
       sql += ` AND c.owner = :owner`;
       binds.push(owner.toUpperCase());
     } else {
       sql += ` AND c.owner = USER`;
     }
-    
+
     sql += ` ORDER BY c.column_id`;
 
     try {
       const result = await this.executeQuery(sql, binds);
-      
+
       if (result.success && result.data) {
         const columns: TableColumnInfo[] = result.data.rows.map((row: any) => ({
           columnName: row.COLUMN_NAME,

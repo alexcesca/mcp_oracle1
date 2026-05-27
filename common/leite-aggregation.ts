@@ -1,18 +1,27 @@
 import { isValidSqlIdentifier } from './utils.js';
 
 export const ALLOWED_SUM_FIELDS = {
-  quantidade_total_entregue: 'QUANTIDADE_TOTAL_ENTREGUE',
-  quantidade_prevista: 'QUANTIDADE_PREVISTA',
-  quantidade_programada: 'QUANTIDADE_PROGRAMADA'
+  quantidade_total_entregue: 'TOT_REAL_DEST',
+  quantidade_prevista: 'QTDE_PREV_DEST',
+  quantidade_programada: 'QTDE_PROG'
 } as const;
 
 export const ALLOWED_GROUP_FIELDS = {
-  unidade: 'UNIDADE',
-  fornecedor: 'FORNECEDOR',
-  filiada: 'FILIADA',
-  posto: 'POSTO',
-  produto_analisado: 'PRODUTO_ANALISADO'
+  unidade: 'CD_UNID_ORIG',
+  fornecedor: 'FORN_ID_ORIG',
+  filiada: 'CD_FILI_ORIG',
+  posto: 'CD_POSTO_ORIG',
+  produto_analisado: 'DESCR_MATERANALI'
 } as const;
+
+// Colunas companheiras (nome/descrição) incluídas automaticamente junto ao agrupamento.
+// Quando múltiplos campos compartilham a mesma coluna (ex: NOME_ORIG), ela é deduplificada.
+export const GROUP_FIELD_COMPANIONS: Partial<Record<keyof typeof ALLOWED_GROUP_FIELDS, { column: string; alias: string }>> = {
+  unidade:           { column: 'NOME_ORIG',      alias: 'NOME_ORIG' },
+  fornecedor:        { column: 'NOME_ORIG',      alias: 'NOME_ORIG' },
+  posto:             { column: 'NOME_ORIG',      alias: 'NOME_ORIG' },
+  produto_analisado: { column: 'CD_MATERANALI',  alias: 'CD_MATERANALI' }
+};
 
 export type AllowedSumField = keyof typeof ALLOWED_SUM_FIELDS;
 export type AllowedGroupField = keyof typeof ALLOWED_GROUP_FIELDS;
@@ -115,6 +124,8 @@ export function buildLeiteAggregationQuery(params: {
   groupFields: string[];
   filters?: Partial<Record<string, string>>;
   maxRows: number;
+  startDate?: Date;
+  endDate?: Date;
 }): AggregationQueryBuildResult {
   const selectedSums = assertAllowedFields<AllowedSumField>(
     params.sumFields,
@@ -128,8 +139,8 @@ export function buildLeiteAggregationQuery(params: {
     'agrupamento'
   );
 
-  if (!Number.isInteger(params.maxRows) || params.maxRows < 1 || params.maxRows > 1000) {
-    throw new Error("Campo 'maxRows' deve ser um inteiro entre 1 e 1000.");
+  if (!Number.isInteger(params.maxRows) || params.maxRows < 1) {
+    throw new Error("Campo 'maxRows' deve ser um inteiro positivo.");
   }
 
   const groupExpressions = selectedGroups.map((field) => {
@@ -139,6 +150,23 @@ export function buildLeiteAggregationQuery(params: {
     }
     return `${columnName} AS ${field.toUpperCase()}`;
   });
+
+  // Colunas companheiras deduplificadas (nome/descrição associadas ao agrupamento)
+  const seenCompanionColumns = new Set<string>();
+  const companionSelectExpressions: string[] = [];
+  const companionGroupByColumns: string[] = [];
+
+  for (const field of selectedGroups) {
+    const companion = GROUP_FIELD_COMPANIONS[field];
+    if (companion && !seenCompanionColumns.has(companion.column)) {
+      if (!isValidSqlIdentifier(companion.column) || !isValidSqlIdentifier(companion.alias)) {
+        throw new Error(`Coluna companion inválida: ${companion.column}.`);
+      }
+      seenCompanionColumns.add(companion.column);
+      companionSelectExpressions.push(`${companion.column} AS ${companion.alias}`);
+      companionGroupByColumns.push(companion.column);
+    }
+  }
 
   const sumExpressions = selectedSums.map((field) => {
     const columnName = ALLOWED_SUM_FIELDS[field];
@@ -153,6 +181,16 @@ export function buildLeiteAggregationQuery(params: {
   };
 
   const whereClauses: string[] = [];
+
+  if (params.startDate) {
+    whereClauses.push('DT >= :dt_inic');
+    binds['dt_inic'] = params.startDate;
+  }
+
+  if (params.endDate) {
+    whereClauses.push('DT <= :dt_fim');
+    binds['dt_fim'] = params.endDate;
+  }
 
   if (params.filters) {
     for (const [field, value] of Object.entries(params.filters)) {
@@ -174,16 +212,17 @@ export function buildLeiteAggregationQuery(params: {
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
   const groupByColumns = selectedGroups.map((field) => ALLOWED_GROUP_FIELDS[field]);
+  const allGroupByColumns = [...groupByColumns, ...companionGroupByColumns];
   const orderByAlias = `SOMA_${selectedSums[0].toUpperCase()}`;
 
   const sql = [
     'SELECT *',
     'FROM (',
     '  SELECT',
-    `    ${[...groupExpressions, ...sumExpressions].join(',\n    ')}`,
+    `    ${[...groupExpressions, ...companionSelectExpressions, ...sumExpressions].join(',\n    ')}`,
     '  FROM resumo_programacao_leite_obi',
     `  ${whereSql}`,
-    `  GROUP BY ${groupByColumns.join(', ')}`,
+    `  GROUP BY ${allGroupByColumns.join(', ')}`,
     `  ORDER BY ${orderByAlias} DESC`,
     ')',
     'WHERE ROWNUM <= :maxRows'

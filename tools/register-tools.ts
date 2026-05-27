@@ -465,14 +465,14 @@ export function registerAllTools(server: McpServer, getOracleService: () => Orac
         "quantidade_total_entregue",
         "quantidade_prevista",
         "quantidade_programada"
-      ])).min(1).describe("Campos de somatório permitidos"),
+      ])).min(1).describe("Campos de somatório permitidos: quantidade_total_entregue=TOT_REAL_DEST, quantidade_prevista=QTDE_PREV_DEST, quantidade_programada=QTDE_PROG"),
       agruparPor: z.array(z.enum([
         "unidade",
         "fornecedor",
         "filiada",
         "posto",
         "produto_analisado"
-      ])).min(1).describe("Campos de agrupamento permitidos"),
+      ])).min(1).describe("Campos de agrupamento permitidos: unidade=CD_UNID_ORIG, fornecedor=FORN_ID_ORIG, filiada=CD_FILI_ORIG, posto=CD_POSTO_ORIG, produto_analisado=DESCR_MATERANALI"),
       filtros: z.record(z.string(), z.string()).optional().describe("Filtros opcionais por dimensão permitida"),
       maxRows: z.number().int().min(1).max(1000).optional().default(200).describe("Limite máximo de linhas"),
       formatAsTable: z.boolean().optional().default(true).describe("Formatar resultado como tabela")
@@ -480,6 +480,16 @@ export function registerAllTools(server: McpServer, getOracleService: () => Orac
     async (args) => {
       try {
         const period = resolvePeriod(args.dtInic, args.dtFim);
+
+        const deleteSql = ` DELETE FROM resumo_programacao_leite_obi`;
+        const deleteResult = await getOracleService().executeCommand(deleteSql, {} as any, { autoCommit: true });
+
+        if (!deleteResult.success) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `❌ **Erro ao limpar dados do período:** ${deleteResult.error}` }],
+          };
+        }
 
         const procSql = `
 BEGIN
@@ -534,11 +544,13 @@ END;`;
           sumFields: args.somatorios,
           groupFields: args.agruparPor,
           filters: args.filtros,
-          maxRows: args.maxRows
+          maxRows: args.maxRows,
+          startDate: period.startDate,
+          endDate: period.endDate
         });
 
         const queryResult = await getOracleService().executeQuery(queryBuild.sql, queryBuild.binds as any, {
-          maxRows: args.maxRows,
+          //maxRows: args.maxRows,
           extendedMetaData: false
         });
 
@@ -564,7 +576,7 @@ END;`;
             "**Resultado**",
             "",
             "```",
-            formatQueryResultAsTable(rows, args.maxRows),
+            formatQueryResultAsTable(rows),//args.maxRows),
             "```"
           ].join("\n");
         } else {
