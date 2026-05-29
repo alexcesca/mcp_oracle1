@@ -550,7 +550,7 @@ END;`;
         });
 
         const queryResult = await getOracleService().executeQuery(queryBuild.sql, queryBuild.binds as any, {
-          //maxRows: args.maxRows,
+          maxRows: args.maxRows,
           extendedMetaData: false
         });
 
