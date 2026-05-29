@@ -1,0 +1,5 @@
+dist/
+.env
+*.log
+.git/
+.gitignore

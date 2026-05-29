@@ -11,17 +11,6 @@ if not exist .env (
     exit /b 1
 )
 
-REM Check if dist folder exists
-if not exist dist (
-    echo Building project...
-    call npm run build
-    if %ERRORLEVEL% NEQ 0 (
-        echo ERROR: Build failed!
-        pause
-        exit /b 1
-    )
-)
-
 REM Load environment variables from .env file
 for /f "usebackq tokens=1,2 delims==" %%i in (.env) do (
     if not "%%i"=="" if not "%%i:~0,1%"=="#" (
@@ -38,6 +27,6 @@ echo - Old Crypto: %ORACLE_OLD_CRYPTO%
 echo.
 
 echo Starting server...
-node dist/index.js
+npx tsx index.ts
 
 pause 

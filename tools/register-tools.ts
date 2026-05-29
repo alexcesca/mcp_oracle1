@@ -455,8 +455,8 @@ export function registerAllTools(server: McpServer, getOracleService: () => Orac
   // 8. Gerar resumo de programação de leite OBI
   server.tool(
     "oracle_resumo_programacao_leite",
-    "Executa PK_LAC_OBI.PKB_GERA_PROGLEI e retorna somatórios da resumo_programacao_leite_obi por agrupamentos permitidos",
-    {
+    "Executa PK_LAC_OBI.PKB_GERA_PROGLEI e retorna somatórios da programacao leite por agrupamentos permitidos",
+    {   
       dtInic: z.string().optional().describe("Data inicial no formato YYYY-MM-DD"),
       dtFim: z.string().optional().describe("Data final no formato YYYY-MM-DD"),
       sistema: z.string().optional().default("OBI").describe("Identificação do sistema para a procedure"),

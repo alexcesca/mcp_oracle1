@@ -27,9 +27,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Copy source code and build
+# Copy source code (no build step — TypeScript is executed directly via tsx)
 COPY . .
-RUN npm run build
 
 # Start the MCP server using stdio
 CMD ["npm", "start"]

@@ -20,9 +20,9 @@
     "oracledb"
   ],
   "type": "module",
-  "main": "dist/index.js",
+  "main": "index.ts",
   "bin": {
-    "mcp-oracle-db": "dist/index.js"
+    "mcp-oracle-db": "index.ts"
   },
   "files": [
     "dist/**/*",
@@ -39,11 +39,11 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "watch": "tsc --watch",
-    "start": "node dist/index.js",
-    "start:http": "MCP_TRANSPORT=http MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js",
-    "start:https": "MCP_TRANSPORT=https MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js",
-    "dev": "npm run build && npm run start",
-    "inspector": "npx -y @modelcontextprotocol/inspector node dist/index.js",
+    "start": "tsx index.ts",
+    "start:http": "MCP_TRANSPORT=http MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 tsx index.ts",
+    "start:https": "MCP_TRANSPORT=https MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 tsx index.ts",
+    "dev": "tsx index.ts",
+    "inspector": "npx -y @modelcontextprotocol/inspector tsx index.ts",
     "test": "NODE_TLS_REJECT_UNAUTHORIZED=0 node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch='**/tests/**/*.test.ts'",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
@@ -57,6 +57,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "oracledb": "^6.10.0",
+    "tsx": "^4.19.2",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.23.5"
   },

@@ -11,16 +11,6 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Check if dist folder exists
-if [ ! -d dist ]; then
-    echo "Building project..."
-    npm run build
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Build failed!"
-        exit 1
-    fi
-fi
-
 # Load environment variables from .env file
 set -a
 source .env
@@ -35,4 +25,4 @@ echo "- Old Crypto: ${ORACLE_OLD_CRYPTO:-false}"
 echo
 
 echo "Starting server..."
-node dist/index.js 
+npx tsx index.ts 
