@@ -31,9 +31,9 @@ describe('Leite aggregation helpers', () => {
     });
 
     expect(result.sql).toContain('FROM resumo_programacao_leite_obi');
-    expect(result.sql).toContain('SUM(QUANTIDADE_TOTAL_ENTREGUE) AS SOMA_QUANTIDADE_TOTAL_ENTREGUE');
-    expect(result.sql).toContain('SUM(QUANTIDADE_PROGRAMADA) AS SOMA_QUANTIDADE_PROGRAMADA');
-    expect(result.sql).toContain('GROUP BY UNIDADE, FORNECEDOR');
+    expect(result.sql).toContain('SUM(TOT_REAL_DEST) AS SOMA_QUANTIDADE_TOTAL_ENTREGUE');
+    expect(result.sql).toContain('SUM(QTDE_PROG) AS SOMA_QUANTIDADE_PROGRAMADA');
+    expect(result.sql).toContain('GROUP BY CD_UNID_ORIG, FORN_ID_ORIG, NOME_ORIG');
     expect(result.sql).toContain('WHERE ROWNUM <= :maxRows');
     expect(result.binds.maxRows).toBe(100);
     expect(result.binds.f_unidade).toBe('U01');

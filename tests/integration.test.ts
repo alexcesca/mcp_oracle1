@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { OracleService } from '../tools/oracle-service';
 
+const hasOracleConfig = Boolean(process.env.ORACLE_HOST || process.env.ORACLE_CONNECTION_STRING);
+const itOracle = hasOracleConfig ? it : it.skip;
+
 describe('Testes de Integração Oracle MCP', () => {
-  let oracleService: OracleService;
+  let oracleService: OracleService | undefined;
 
   beforeAll(async () => {
     // Só executar testes se houver configuração do Oracle
-    if (!process.env.ORACLE_HOST && !process.env.ORACLE_CONNECTION_STRING) {
+    if (!hasOracleConfig) {
       console.log('Pulando testes do Oracle - nenhuma configuração encontrada');
       return;
     }
@@ -24,13 +27,11 @@ describe('Testes de Integração Oracle MCP', () => {
     }
   });
 
-  it('deve conectar ao banco de dados Oracle', async () => {
-    if (!oracleService) {
-      console.log('Pulando teste - nenhum serviço Oracle');
-      return;
-    }
+  itOracle('deve conectar ao banco de dados Oracle', async () => {
+    expect(oracleService).toBeDefined();
+    const service = oracleService!;
 
-    const result = await oracleService.healthCheck();
+    const result = await service.healthCheck();
     
     if (result.success) {
       expect(result.success).toBe(true);
@@ -44,13 +45,11 @@ describe('Testes de Integração Oracle MCP', () => {
     }
   }, 30000);
 
-  it('deve executar uma consulta básica', async () => {
-    if (!oracleService) {
-      console.log('Pulando teste - nenhum serviço Oracle');
-      return;
-    }
+  itOracle('deve executar uma consulta básica', async () => {
+    expect(oracleService).toBeDefined();
+    const service = oracleService!;
 
-    const result = await oracleService.executeQuery('SELECT 1 as TEST_VALUE FROM DUAL');
+    const result = await service.executeQuery('SELECT 1 as TEST_VALUE FROM DUAL');
     
     if (result.success) {
       expect(result.success).toBe(true);
@@ -64,13 +63,11 @@ describe('Testes de Integração Oracle MCP', () => {
     }
   }, 30000);
 
-  it('deve listar as tabelas do usuário', async () => {
-    if (!oracleService) {
-      console.log('Pulando teste - nenhum serviço Oracle');
-      return;
-    }
+  itOracle('deve listar as tabelas do usuário', async () => {
+    expect(oracleService).toBeDefined();
+    const service = oracleService!;
 
-    const result = await oracleService.getTables();
+    const result = await service.getTables();
     
     if (result.success) {
       expect(result.success).toBe(true);
@@ -82,13 +79,11 @@ describe('Testes de Integração Oracle MCP', () => {
     }
   }, 30000);
 
-  it('deve lidar com SQL inválido graciosamente', async () => {
-    if (!oracleService) {
-      console.log('Pulando teste - nenhum serviço Oracle');
-      return;
-    }
+  itOracle('deve lidar com SQL inválido graciosamente', async () => {
+    expect(oracleService).toBeDefined();
+    const service = oracleService!;
 
-    const result = await oracleService.executeQuery('SELECT 1 FROM dual');
+    const result = await service.executeQuery('SELECT coluna_inexistente FROM dual');
     
     expect(result.success).toBe(false);
     expect(result.error).toBeTruthy();

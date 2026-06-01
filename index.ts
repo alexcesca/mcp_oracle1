@@ -39,7 +39,7 @@ registerAllTools(server, getOracleService);
 const DEFAULT_HTTP_HOST = '127.0.0.1';
 const DEFAULT_HTTP_PORT = 3100;
 const DEFAULT_HTTP_PATH = '/mcp';
-const DEFAULT_SESSION_MODE = 'statelesss';
+const DEFAULT_SESSION_MODE = 'stateful';
 
 function normalizePath(path: string): string {
   let normalized = path.trim();
