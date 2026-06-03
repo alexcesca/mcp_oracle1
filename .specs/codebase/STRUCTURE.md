@@ -5,6 +5,7 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
 ## Arvore de Diretorios (ate 3 niveis)
 
 - `common/`
+  - `logger.ts`
   - `leite-aggregation.ts`
   - `types.ts`
   - `utils.ts`
@@ -16,6 +17,8 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
   - `http-transport.test.ts`
   - `integration.test.ts`
   - `leite-aggregation.test.ts`
+  - `session-mode-config.test.ts`
+  - `sql-readonly-classification.test.ts`
 - `types/`
   - `oracledb.d.ts`
 - Arquivos de runtime/configuracao na raiz
@@ -66,6 +69,7 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
 - Finalidade: formatacao reutilizavel, helpers de SQL e contratos tipados.
 - Localizacao: `common/*.ts`
 - Arquivos principais:
+  - `common/logger.ts`: logger com nivel configuravel por ambiente (`debug/info/error`)
   - `common/leite-aggregation.ts`: construtor de SQL de agregacao baseado em allowlist
   - `common/utils.ts`: helpers de classificacao SQL, formatacao e sanitizacao
   - `common/types.ts`: interfaces normalizadas de resultado e modelo

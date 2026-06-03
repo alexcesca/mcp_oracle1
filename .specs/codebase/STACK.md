@@ -15,9 +15,7 @@ Analisado em: 2026-06-01
 - Camada de protocolo: Model Context Protocol (MCP)
 - SDK MCP: `@modelcontextprotocol/sdk` ^1.29.0
 - Modos de transporte:
-  - `stdio` (modo de execucao padrao)
   - `http` com SSE (Streamable HTTP)
-  - `https` com SSE
 - Validacao: `zod` ^3.22.4
 - Conversao de schema: `zod-to-json-schema` ^3.23.5
 
@@ -32,7 +30,7 @@ Analisado em: 2026-06-01
 - Framework de testes: Jest 29 + ts-jest
 - Testes unitarios: modulos helper (`common/leite-aggregation.ts`)
 - Testes de integracao:
-  - transporte HTTP/SSE e HTTPS/SSE
+  - transporte HTTP/SSE
   - testes de integracao Oracle (dependentes de ambiente)
 
 ## Ferramentas de Build e Desenvolvimento
@@ -52,8 +50,7 @@ Analisado em: 2026-06-01
 
 - Build: `npm run build`
 - Dev: `npm run dev`
-- Start (stdio): `npm run start`
+- Start (HTTP/SSE): `npm run start`
 - Start HTTP: `npm run start:http`
-- Start HTTPS: `npm run start:https`
 - Testes: `npm test`
 - Inspector: `npm run inspector`

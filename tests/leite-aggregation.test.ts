@@ -31,6 +31,8 @@ describe('Leite aggregation helpers', () => {
     });
 
     expect(result.sql).toContain('FROM resumo_programacao_leite_obi');
+    expect(result.sql).toContain('CD_UNID_ORIG AS UNIDADE');
+    expect(result.sql).toContain('FORN_ID_ORIG AS FORNECEDOR');
     expect(result.sql).toContain('SUM(TOT_REAL_DEST) AS SOMA_QUANTIDADE_TOTAL_ENTREGUE');
     expect(result.sql).toContain('SUM(QTDE_PROG) AS SOMA_QUANTIDADE_PROGRAMADA');
     expect(result.sql).toContain('GROUP BY CD_UNID_ORIG, FORN_ID_ORIG, NOME_ORIG');

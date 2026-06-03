@@ -21,22 +21,6 @@ Verifica o estado de saúde da conexão Oracle DB.
 Executa consultas SQL SELECT com formato de tabela ou JSON.
 - **Parâmetros**: `sql`, `maxRows`, `formatAsTable`, `showMetadata`
 
-### `oracle_execute` 
-Executa comandos SQL (INSERT, UPDATE, DELETE, CREATE, etc.).
-- **Parâmetros**: `sql`, `autoCommit`, `showDetails`
-
-### `oracle_list_tables`
-Lista todas as tabelas do esquema especificado.
-- **Parâmetros**: `owner`, `showDetails`
-
-### `oracle_describe_table`
-Mostra a estrutura completa de uma tabela.
-- **Parâmetros**: `tableName`, `owner`, `showDetails`
-
-### `oracle_transaction`
-Executa múltiplos comandos SQL em uma transação.
-- **Parâmetros**: `commands`, `rollbackOnError`
-
 ### `oracle_info`
 Mostra informações de configuração da conexão.
 
@@ -49,45 +33,90 @@ Executa `PK_LAC_OBI.PKB_GERA_PROGLEI` para o período solicitado e, em seguida, 
 
 ## 🛠️ Instalação
 
-### ⚠️ **IMPORTANTE: Para Oracle 9g e versões antigas**
+### 🐳 1. Execução via Docker e Docker Compose (Altamente Recomendado)
 
-Se você estiver usando Oracle 9g ou versões anteriores, deve seguir estes passos adicionais:
+A execução via Docker é o método mais simples e recomendado, pois **o container já vem com o Oracle Instant Client instalado e configurado automaticamente**. Isso evita a necessidade de baixar pacotes do Oracle, instalar dependências nativas (como `libaio`) ou gerenciar o `LD_LIBRARY_PATH` no seu próprio sistema operacional.
+
+O projeto foi configurado para trabalhar **exclusivamente com o transporte Streamable HTTP (SSE)**.
+
+Certifique-se de ter o Docker e o Docker Compose instalados e o arquivo `.env` configurado na raiz do projeto.
+
+#### Inicialização do Serviço HTTP/SSE (Porta 3100)
+1. Inicie o container:
+   ```bash
+   docker-compose up -d
+   ```
+2. O servidor MCP estará ativo e pronto para receber conexões SSE no endpoint:
+   `http://localhost:3100/mcp`
+
+---
+
+### 💻 2. Execução Local com Scripts de Conveniência (Sem Docker)
+
+Se preferir rodar localmente fora do Docker e já tiver o Node e o Oracle Client configurados no seu sistema, você pode usar os scripts utilitários `run-mcp.sh` (Linux/macOS) ou `run-mcp.bat` (Windows) para iniciar o servidor Streamable HTTP localmente.
+
+Estes scripts:
+* Verificam a existência do arquivo `.env`.
+* Carregam as variáveis de ambiente automaticamente.
+* Iniciam o servidor Streamable HTTP usando o runner `tsx` na porta configurada (ou padrão `3100`).
+
+Para iniciar o servidor via script:
+* **Linux/macOS**:
+  ```bash
+  ./run-mcp.sh
+  ```
+* **Windows**:
+  ```cmd
+  run-mcp.bat
+  ```
+
+Após iniciado, conecte seus clientes MCP (como Cursor ou MCP Inspector) ao endpoint:
+`http://localhost:3100/mcp`
+
+---
+
+### ⚠️ **IMPORTANTE: Para Oracle 9g e versões antigas (Configuração Manual Sem Docker)**
+
+Se você estiver rodando fora do Docker e estiver usando o Oracle 9g ou versões anteriores, deve seguir estes passos adicionais na sua máquina:
 
 1. **Configurar modo de compatibilidade**:
-```bash
-ORACLE_OLD_CRYPTO=true
-```
+   ```bash
+   ORACLE_OLD_CRYPTO=true
+   ```
 
 2. **Baixar o Oracle Instant Client 19.26** (obrigatório para Oracle 9g):
    - **Windows**: [instantclient-basic-windows.x64-19.26.0.0.0dbru.zip](https://download.oracle.com/otn_software/nt/instantclient/1926000/instantclient-basic-windows.x64-19.26.0.0.0dbru.zip)
    - Extrair em uma pasta (ex: `C:\oracle\instantclient_19_26`)
-   - Configurar o caminho:
-```bash
-ORACLE_CLIENT_LIB_DIR=C:\oracle\instantclient_19_26
-```
+   - Configurar o caminho no `.env`:
+     ```bash
+     ORACLE_CLIENT_LIB_DIR=C:\oracle\instantclient_19_26
+     ```
 
-3. **Configuração MCP para Oracle 9g**:
-```json
-{
-  "mcpServers": {
-    "oracle-db": {
-      "command": "npx",
-      "args": ["@grec0/mcp-oracle-db"],
-      "env": {
-        "ORACLE_HOST": "seu-host-oracle",
-        "ORACLE_PORT": "1521",
-        "ORACLE_SERVICE_NAME": "seu-servico",
-        "ORACLE_USERNAME": "usuario",
-        "ORACLE_PASSWORD": "senha",
-        "ORACLE_OLD_CRYPTO": "true",
-        "ORACLE_CLIENT_LIB_DIR": "C:\\oracle\\instantclient_19_26"
-      }
-    }
-  }
-}
-```
+3. **Configuração MCP para Oracle 9g (com NPX)**:
+   ```json
+   {
+     "mcpServers": {
+       "oracle-db": {
+         "command": "npx",
+         "args": ["@grec0/mcp-oracle-db"],
+         "env": {
+           "ORACLE_HOST": "seu-host-oracle",
+           "ORACLE_PORT": "1521",
+           "ORACLE_SERVICE_NAME": "seu-servico",
+           "ORACLE_USERNAME": "usuario",
+           "ORACLE_PASSWORD": "senha",
+           "ORACLE_OLD_CRYPTO": "true",
+           "ORACLE_CLIENT_LIB_DIR": "C:\\oracle\\instantclient_19_26"
+         }
+       }
+     }
+   }
+   ```
 
-### Instalação Geral MCP LOCAL (NÃO RECOMENDADO)
+---
+
+### 💻 3. Instalação Geral MCP LOCAL (Desenvolvimento Manual)
+
 
 1. **Instalar dependências**:
 ```bash
@@ -221,10 +250,9 @@ npm run build
 ## **HTTP/SSE Transport**
 
 - **Resumo:** O servidor suporta o transporte HTTP com SSE (Server-Sent Events) conforme a especificação MCP. Neste modo, clientes abrem uma conexão SSE (GET) para receber mensagens do servidor e enviam requisições POST para o endpoint fornecido pelo evento `endpoint`.
-- **Modo padrão:** `stdio` (iniciado via `node dist/index.js` ou `./run-mcp.sh`).
+- **Modo padrão:** HTTP/SSE com StreamableHTTPServerTransport.
 - **Variáveis de ambiente relevantes:**
 
-  - `MCP_TRANSPORT` — `http` para ativar HTTP/SSE (padrão: `stdio`)
   - `MCP_HTTP_HOST` — host a ser ligado (padrão: `127.0.0.1`)
   - `MCP_HTTP_PORT` — porta do servidor HTTP (padrão: `3100`)
   - `MCP_HTTP_PATH` — caminho do endpoint MCP (padrão: `/mcp`)
@@ -238,7 +266,7 @@ npm run build
 npm run start:http
 
 # ou explicitamente
-MCP_TRANSPORT=http MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js
+MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js
 ```
 
 - **Segurança:** o servidor valida o header `Origin` para mitigar ataques de DNS rebinding. Em implantação local, o servidor por padrão liga somente em `127.0.0.1`.

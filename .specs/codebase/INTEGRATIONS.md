@@ -36,7 +36,6 @@ Expor capacidades Oracle como ferramentas MCP para clientes compativeis.
 ### Pontos de Integracao
 
 - `McpServer`
-- `StdioServerTransport`
 - `StreamableHTTPServerTransport`
 - Registro de ferramentas via `server.tool(...)`
 
@@ -44,18 +43,17 @@ Expor capacidades Oracle como ferramentas MCP para clientes compativeis.
 
 - health check, SQL de leitura/escrita, descoberta de metadados, helper de transacao, informacoes de configuracao e ferramenta de agregacao de leite especifica do dominio.
 
-## Rede HTTP/HTTPS
+## Rede HTTP/SSE
 
 ### Finalidade
 
-Modo remoto opcional de transporte do MCP sobre HTTP/SSE.
+Transporte MCP sobre HTTP/SSE.
 
 ### Pontos de Integracao
 
-- Servidores Node `http` e `https` em `index.ts`
+- Servidor Node `http` em `index.ts`
 - Roteador de caminho/metodo para endpoint MCP
 - Validacao de Origin para requisicoes de entrada
-- Certificado/chave TLS opcionais via caminhos de arquivo
 
 ## Runtime de Container
 

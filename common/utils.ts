@@ -11,46 +11,9 @@ export function formatDuration(ms: number): string {
   }
 }
 
-// Formatar bytes para texto legível
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
 // Formatar número com separadores de milhares
 export function formatNumber(num: number): string {
   return num.toLocaleString();
-}
-
-// Escapar texto SQL para prevenir injeção
-export function escapeSqlValue(value: any): string {
-  if (value === null || value === undefined) {
-    return 'NULL';
-  }
-  
-  if (typeof value === 'string') {
-    // Escapar aspas simples duplicando-as
-    return `'${value.replace(/'/g, "''")}'`;
-  }
-  
-  if (typeof value === 'number') {
-    return value.toString();
-  }
-  
-  if (typeof value === 'boolean') {
-    return value ? '1' : '0';
-  }
-  
-  if (value instanceof Date) {
-    return `TO_DATE('${value.toISOString()}', 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"')`;
-  }
-  
-  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 // Validar identificador SQL (tabela, coluna, etc.)
@@ -101,9 +64,21 @@ export function getSqlCommandType(sql: string): string {
   return 'UNKNOWN';
 }
 
+function hasWriteOrDdlKeyword(sql: string): boolean {
+  // Para consultas iniciadas com WITH, qualquer comando de escrita/DDL no texto
+  // indica que nao deve ser tratado como somente leitura.
+  return /\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|COMMIT|ROLLBACK|SAVEPOINT|CALL)\b/.test(sql);
+}
+
 // Determinar se um comando é de apenas leitura
 export function isReadOnlyCommand(sql: string): boolean {
+  const cleanSql = sanitizeSql(sql).toUpperCase();
   const commandType = getSqlCommandType(sql);
+
+  if (commandType === 'WITH') {
+    return !hasWriteOrDdlKeyword(cleanSql);
+  }
+
   const readOnlyCommands = ['SELECT', 'EXPLAIN', 'WITH'];
   return readOnlyCommands.includes(commandType);
 }

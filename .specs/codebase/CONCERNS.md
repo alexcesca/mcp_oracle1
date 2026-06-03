@@ -1,79 +1,34 @@
-# Concerns
+# Preocupacoes
 
-Analyzed: 2026-06-01
+Analisado em: 2026-06-02
 
-## High Priority
+## Alta Prioridade
 
-### 1) Broken test expectations in leite aggregation unit test
+Sem preocupacoes ativas de alta prioridade nesta reavaliacao.
 
-- Location: `tests/leite-aggregation.test.ts`
-- Issue:
-  - assertions expect SQL based on logical field names instead of mapped physical columns used by implementation.
-- Impact:
-  - CI instability and reduced trust in test suite.
-- Evidence:
-  - current test run fails in this case.
+### Resolvidas nesta rodada
 
-### 2) Oracle integration tests can pass without validating Oracle behavior
+1. Teste unitario de agregacao de leite alinhado ao SQL mapeado.
+   - Evidencia: `tests/leite-aggregation.test.ts` agora valida colunas fisicas (`CD_UNID_ORIG`, `FORN_ID_ORIG`, `TOT_REAL_DEST`, `QTDE_PROG`) e passou na execucao local.
+2. Testes de integracao Oracle com semantica explicita de skip e sem falso positivo.
+   - Evidencia: `tests/integration.test.ts` usa `describe.skip` quando falta configuracao e, quando executado, exige sucesso real nas assercoes.
+3. Protecao contra DNS rebinding ativada no transporte HTTP Streamable.
+   - Evidencia: `index.ts` agora usa `enableDnsRebindingProtection: true` e os testes de transporte HTTP/HTTPS seguem passando.
+4. Parse de `MCP_SESSION_MODE` endurecido com validacao estrita e teste de regressao.
+   - Evidencia: `index.ts` agora rejeita valores invalidos (em vez de fallback silencioso para `stateful`) e `tests/session-mode-config.test.ts` cobre esse comportamento.
+5. Logging pesado de startup reduzido com logger com nivel configuravel.
+   - Evidencia: `common/logger.ts` introduz niveis `debug/info/error`; em `NODE_ENV=test` apenas `error` aparece; em producao `info` e ativado. Todos os `console.error` de startup em `index.ts` foram migrados para `logger.info`.
+6. Classificacao de SQL read-only fortalecida para consultas `WITH`.
+   - Evidencia: `common/utils.ts` agora trata `WITH` com palavras-chave de escrita/DDL como nao somente leitura; `tests/sql-readonly-classification.test.ts` cobre `WITH + SELECT` (permitido) e `WITH + INSERT/DELETE` (bloqueados).
 
-- Location: `tests/integration.test.ts`
-- Issue:
-  - tests return early when env/service is unavailable but are still marked as pass.
-- Impact:
-  - false confidence in Oracle integration health.
+## Media Prioridade
 
-## Medium Priority
+Sem preocupacoes ativas de media prioridade nesta reavaliacao.
 
-### 3) Invalid SQL test does not test invalid SQL path
+## Baixa Prioridade
 
-- Location: `tests/integration.test.ts`
-- Issue:
-  - test named as invalid SQL uses `SELECT 1 FROM dual`, which is valid SQL.
-- Impact:
-  - expected error-path coverage is misleading.
+Sem preocupacoes ativas de baixa prioridade nesta reavaliacao.
 
-### 4) Session mode default appears fragile
+## Acoes Priorizadas Recomendadas
 
-- Location: `index.ts`
-- Issue:
-  - `DEFAULT_SESSION_MODE` is set to `statelesss` (extra `s`).
-  - current parser then falls back to `stateful` unless env is exactly `stateless`.
-- Impact:
-  - behavior may differ from intended default and can confuse maintainers.
-
-### 5) DNS rebinding protection disabled in HTTP transport object
-
-- Location: `index.ts`
-- Issue:
-  - `enableDnsRebindingProtection: false` in Streamable HTTP transport options.
-- Mitigation already present:
-  - custom `Origin` validation is implemented.
-- Residual risk:
-  - if origin policy is misconfigured (e.g., wildcard), attack surface increases.
-
-## Low Priority
-
-### 6) Heavy startup logging in normal and test paths
-
-- Locations: `index.ts`, tests output
-- Issue:
-  - extensive `console.error` output can hide actual failures in CI logs.
-- Impact:
-  - slower diagnosis and noisy pipeline output.
-
-### 7) Potential SQL classification edge cases
-
-- Location: `common/utils.ts`
-- Issue:
-  - read-only detection depends on statement-prefix classification after comment removal.
-  - uncommon SQL wrappers may be misclassified.
-- Impact:
-  - low probability; mostly guardrail quality concern.
-
-## Recommended Prioritized Actions
-
-1. Fix failing `tests/leite-aggregation.test.ts` to match current mapped SQL behavior.
-2. Refactor Oracle integration tests to explicit skip semantics when env is absent.
-3. Correct invalid SQL test case and assert actual failure path.
-4. Clarify intended default for session mode and normalize constant/value.
-5. Re-evaluate `enableDnsRebindingProtection` setting against deployment model.
+Nenhuma acao pendente no momento. Manter monitoramento nas proximas mudancas de parser SQL.

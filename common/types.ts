@@ -69,69 +69,6 @@ export interface TableInfo {
   lastAnalyzed?: Date;
 }
 
-// Informações da coluna da tabela
-export interface TableColumnInfo {
-  columnName: string;
-  dataType: string;
-  dataLength?: number;
-  dataPrecision?: number;
-  dataScale?: number;
-  nullable: string;
-  defaultValue?: string;
-  comments?: string;
-  columnId: number;
-}
-
-// Informações do índice
-export interface IndexInfo {
-  indexName: string;
-  tableName: string;
-  owner: string;
-  indexType: string;
-  uniqueness: string;
-  columns: IndexColumnInfo[];
-}
-
-// Informações da coluna do índice
-export interface IndexColumnInfo {
-  columnName: string;
-  columnPosition: number;
-  descend: string;
-}
-
-// Informações da visão (view)
-export interface ViewInfo {
-  viewName: string;
-  owner: string;
-  text: string;
-  textLength: number;
-  readOnly: string;
-}
-
-// Informações de procedimento/função
-export interface ProcedureInfo {
-  objectName: string;
-  procedureName: string;
-  owner: string;
-  objectType: string;
-  status: string;
-  created: Date;
-  lastDdlTime: Date;
-}
-
-// Informações da sequência
-export interface SequenceInfo {
-  sequenceName: string;
-  owner: string;
-  minValue: number;
-  maxValue: number;
-  incrementBy: number;
-  cycleFlag: string;
-  orderFlag: string;
-  cacheSize: number;
-  lastNumber: number;
-}
-
 // Status da conexão
 export interface ConnectionStatus {
   connected: boolean;
@@ -190,34 +127,4 @@ export interface BindParameter {
   type?: number;
   maxSize?: number;
   dir?: number; // oracledb.BIND_IN, oracledb.BIND_OUT, oracledb.BIND_INOUT
-}
-
-// Informações do esquema
-export interface SchemaInfo {
-  schemaName: string;
-  defaultTablespace: string;
-  temporaryTablespace: string;
-  created: Date;
-  accountStatus: string;
-  lockDate?: Date;
-  expiryDate?: Date;
-  profile: string;
-}
-
-// Informações do tablespace
-export interface TablespaceInfo {
-  tablespaceName: string;
-  blockSize: number;
-  initialExtent: number;
-  nextExtent: number;
-  minExtents: number;
-  maxExtents: number;
-  pctIncrease: number;
-  status: string;
-  contents: string;
-  logging: string;
-  forceLogging: string;
-  extentManagement: string;
-  allocationType: string;
-  segmentSpaceManagement: string;
 }

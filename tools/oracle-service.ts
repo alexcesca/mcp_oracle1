@@ -5,16 +5,9 @@ import {
   QueryResult,
   ExecuteResult,
   TableInfo,
-  TableColumnInfo,
-  IndexInfo,
-  ViewInfo,
-  ProcedureInfo,
-  SequenceInfo,
   ConnectionStatus,
   QueryOptions,
   ExecuteOptions,
-  SchemaInfo,
-  TablespaceInfo
 } from '../common/types.js';
 import {
   formatDuration,
@@ -405,73 +398,6 @@ export class OracleService {
         return {
           success: true,
           data: tables,
-          executionTime: Date.now() - startTime
-        };
-      }
-
-      return result as any;
-
-    } catch (error: any) {
-      return {
-        success: false,
-        error: createFriendlyErrorMessage(error),
-        executionTime: Date.now() - startTime
-      };
-    }
-  }
-
-  // Obter colunas de uma tabela
-  async getTableColumns(tableName: string, owner?: string): Promise<OracleResult<TableColumnInfo[]>> {
-    const startTime = Date.now();
-
-    let sql = `
-      SELECT 
-        c.column_name,
-        c.data_type,
-        c.data_length,
-        c.data_precision,
-        c.data_scale,
-        c.nullable,
-        c.data_default,
-        c.column_id,
-        cc.comments
-      FROM all_tab_columns c
-      LEFT JOIN all_col_comments cc ON c.owner = cc.owner 
-        AND c.table_name = cc.table_name 
-        AND c.column_name = cc.column_name
-      WHERE c.table_name = :tableName
-    `;
-
-    const binds: any[] = [tableName.toUpperCase()];
-
-    if (owner) {
-      sql += ` AND c.owner = :owner`;
-      binds.push(owner.toUpperCase());
-    } else {
-      sql += ` AND c.owner = USER`;
-    }
-
-    sql += ` ORDER BY c.column_id`;
-
-    try {
-      const result = await this.executeQuery(sql, binds);
-
-      if (result.success && result.data) {
-        const columns: TableColumnInfo[] = result.data.rows.map((row: any) => ({
-          columnName: row.COLUMN_NAME,
-          dataType: row.DATA_TYPE,
-          dataLength: row.DATA_LENGTH,
-          dataPrecision: row.DATA_PRECISION,
-          dataScale: row.DATA_SCALE,
-          nullable: row.NULLABLE,
-          defaultValue: row.DATA_DEFAULT,
-          comments: row.COMMENTS,
-          columnId: row.COLUMN_ID
-        }));
-
-        return {
-          success: true,
-          data: columns,
           executionTime: Date.now() - startTime
         };
       }
