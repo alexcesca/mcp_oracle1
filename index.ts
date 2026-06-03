@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse, Server as HttpServer } from "node:http";
 import { randomUUID } from "node:crypto";
 
@@ -175,38 +175,19 @@ async function runServer(overrides?: Partial<HttpConfig>) {
 
     const httpConfig = resolveHttpConfig(overrides);
 
-    logger.info("Iniciando Servidor MCP Oracle DB em modo http/sse...");
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: httpConfig.sessionMode === 'stateful' ? () => randomUUID() : undefined,
-      allowedOrigins: httpConfig.allowedOrigins,
-      enableDnsRebindingProtection: true,
-      retryInterval: 3000,
-    });
-
-    const httpTransport = transport;
+    const transports = new Map<string, SSEServerTransport>();
 
     logger.info('Configuração HTTP MCP:');
     logger.info(`- Host: ${httpConfig.host}`);
     logger.info(`- Porta: ${httpConfig.port}`);
     logger.info(`- Path: ${httpConfig.path}`);
-    logger.info(`- Modo de sessão: ${httpConfig.sessionMode}`);
+    logger.info(`- Modo de sessão (ignorado em SSE clássico): ${httpConfig.sessionMode}`);
     logger.info(`- Allowed Origins: ${httpConfig.allowedOrigins.join(', ')}`);
-
-    logger.info("Conectando servidor ao transporte...");
-
-    // Conectar servidor ao transporte - isso deve manter o processo ativo
-    await server.connect(transport);
 
     const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
       try {
         const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-        if (url.pathname !== httpConfig.path) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Not found' }));
-          return;
-        }
-
+        
         try {
           validateOrigin(req, httpConfig.allowedOrigins);
         } catch (originError: any) {
@@ -215,34 +196,59 @@ async function runServer(overrides?: Partial<HttpConfig>) {
           return;
         }
 
-        if (req.method === 'POST') {
-          let parsedBody: unknown;
-          try {
-            parsedBody = await parseJsonBody(req);
-          } catch (bodyError: any) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: bodyError.message }));
+        // Add CORS headers for browser clients
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
+
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
+        // GET /mcp -> Start SSE Stream
+        if (url.pathname === httpConfig.path && req.method === 'GET') {
+          const transport = new SSEServerTransport(httpConfig.path + '/message', res as any, {
+            enableDnsRebindingProtection: false
+          });
+          
+          transports.set(transport.sessionId, transport);
+          res.on('close', () => {
+            transports.delete(transport.sessionId);
+          });
+
+          await server.connect(transport);
+          return;
+        }
+
+        // POST /mcp/message -> Receive messages
+        if (url.pathname === httpConfig.path + '/message' && req.method === 'POST') {
+          const sessionId = url.searchParams.get('sessionId');
+          if (!sessionId) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('sessionId required');
             return;
           }
-          await httpTransport.handleRequest(req, res, parsedBody);
+
+          const transport = transports.get(sessionId);
+          if (!transport) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('Session not found');
+            return;
+          }
+
+          await transport.handlePostMessage(req as any, res as any);
           return;
         }
 
-        if (req.method === 'GET' || req.method === 'DELETE') {
-          await httpTransport.handleRequest(req, res);
-          return;
-        }
-
-        res.writeHead(405, {
-          'Content-Type': 'application/json',
-          Allow: 'GET, POST, DELETE',
-        });
-        res.end(JSON.stringify({ error: 'Method not allowed' }));
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
       } catch (error: any) {
         logger.error('Erro na requisição HTTP/SSE:', error);
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
+          res.end(JSON.stringify({ error: 'Internal server error', details: error.message }));
         }
       }
     };
