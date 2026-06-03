@@ -9,7 +9,7 @@ Servidor MCP (Model Context Protocol) para integração completa com Oracle Data
 - **Gestão de Transações**: Suporte para transações manuais e automáticas
 - **Exploração de BD**: Lista tabelas, descreve estruturas, explora esquemas
 - **Pool de Conexões**: Gestão eficiente de conexões com Oracle
-- **Compatibilidade**: Suporte para versões antigas do Oracle (pré-12c)
+- **Compatibilidade**: Otimizado para Oracle Database 19c ou superior
 - **Monitoramento**: Health checks e estatísticas de conexão
 
 ## 📋 Ferramentas Disponíveis
@@ -75,46 +75,6 @@ Após iniciado, conecte seus clientes MCP (como Cursor ou MCP Inspector) ao endp
 
 ---
 
-### ⚠️ **IMPORTANTE: Para Oracle 9g e versões antigas (Configuração Manual Sem Docker)**
-
-Se você estiver rodando fora do Docker e estiver usando o Oracle 9g ou versões anteriores, deve seguir estes passos adicionais na sua máquina:
-
-1. **Configurar modo de compatibilidade**:
-   ```bash
-   ORACLE_OLD_CRYPTO=true
-   ```
-
-2. **Baixar o Oracle Instant Client 19.26** (obrigatório para Oracle 9g):
-   - **Windows**: [instantclient-basic-windows.x64-19.26.0.0.0dbru.zip](https://download.oracle.com/otn_software/nt/instantclient/1926000/instantclient-basic-windows.x64-19.26.0.0.0dbru.zip)
-   - Extrair em uma pasta (ex: `C:\oracle\instantclient_19_26`)
-   - Configurar o caminho no `.env`:
-     ```bash
-     ORACLE_CLIENT_LIB_DIR=C:\oracle\instantclient_19_26
-     ```
-
-3. **Configuração MCP para Oracle 9g (com NPX)**:
-   ```json
-   {
-     "mcpServers": {
-       "oracle-db": {
-         "command": "npx",
-         "args": ["@grec0/mcp-oracle-db"],
-         "env": {
-           "ORACLE_HOST": "seu-host-oracle",
-           "ORACLE_PORT": "1521",
-           "ORACLE_SERVICE_NAME": "seu-servico",
-           "ORACLE_USERNAME": "usuario",
-           "ORACLE_PASSWORD": "senha",
-           "ORACLE_OLD_CRYPTO": "true",
-           "ORACLE_CLIENT_LIB_DIR": "C:\\oracle\\instantclient_19_26"
-         }
-       }
-     }
-   }
-   ```
-
----
-
 ### 💻 3. Instalação Geral MCP LOCAL (Desenvolvimento Manual)
 
 
@@ -146,8 +106,6 @@ npm run build
 | `ORACLE_USERNAME` | Usuário do banco de dados | `hr` |
 | `ORACLE_PASSWORD` | Senha do banco de dados | `hr` |
 | `ORACLE_CONNECTION_STRING` | Connection string completa (alternativo) | - |
-| `ORACLE_OLD_CRYPTO` | **OBRIGATÓRIO para Oracle 9g** - Usar modo Thick | `false` |
-| `ORACLE_CLIENT_LIB_DIR` | **OBRIGATÓRIO para Oracle 9g** - Caminho para o Instant Client 19.26 | - |
 | `ORACLE_POOL_MIN` | Conexões mínimas do pool | `1` |
 | `ORACLE_POOL_MAX` | Conexões máximas do pool | `10` |
 | `ORACLE_POOL_TIMEOUT` | Timeout do pool em segundos | `60` |
@@ -165,28 +123,7 @@ npm run build
 
 #### Para Claude Desktop (config.json)
 
-**Configuração para Oracle 9g (com Instant Client 19.26):**
-```json
-{
-  "mcpServers": {
-    "oracle-db": {
-      "command": "npx",
-      "args": ["@grec0/mcp-oracle-db"],
-      "env": {
-        "ORACLE_HOST": "seu-host-oracle",
-        "ORACLE_PORT": "1521",
-        "ORACLE_SERVICE_NAME": "seu-servico",
-        "ORACLE_USERNAME": "usuario",
-        "ORACLE_PASSWORD": "senha",
-        "ORACLE_OLD_CRYPTO": "true",
-        "ORACLE_CLIENT_LIB_DIR": "C:\\oracle\\instantclient_19_26"
-      }
-    }
-  }
-}
-```
-
-**Configuração para Oracle 12c ou superior:**
+**Configuração recomendada (Oracle 19c ou superior):**
 ```json
 {
   "mcpServers": {
@@ -205,8 +142,28 @@ npm run build
 }
 ```
 
-#### Para instalação local
+#### Para instalação local (direto do código fonte)
 
+**Opção A: Rodar via `tsx` (Sem precisar compilar)**
+```json
+{
+  "mcpServers": {
+    "oracle-db": {
+      "command": "npx",
+      "args": ["tsx", "C:/workspaces/mcps/mcp-oracle-db/index.ts"],
+      "env": {
+        "ORACLE_HOST": "host",
+        "ORACLE_PORT": "port",
+        "ORACLE_SERVICE_NAME": "service",
+        "ORACLE_USERNAME": "user",
+        "ORACLE_PASSWORD": "pass"
+      }
+    }
+  }
+}
+```
+
+**Opção B: Rodar via `node` (Requer compilação prévia via `npm run build`)**
 ```json
 {
   "mcpServers": {
@@ -215,11 +172,10 @@ npm run build
       "args": ["C:/workspaces/mcps/mcp-oracle-db/dist/index.js"],
       "env": {
         "ORACLE_HOST": "host",
-        "ORACLE_PORT": "post",
+        "ORACLE_PORT": "port",
         "ORACLE_SERVICE_NAME": "service",
         "ORACLE_USERNAME": "user",
-        "ORACLE_PASSWORD": "pass",
-        "ORACLE_OLD_CRYPTO": "true"
+        "ORACLE_PASSWORD": "pass"
       }
     }
   }
@@ -247,7 +203,111 @@ npm run build
 }
 ```
 
+---
+
+### ⚙️ Configuração para VS Code (com GitHub Copilot / Extensão MCP)
+
+O VS Code pode se conectar ao servidor MCP Oracle através do protocolo **Streamable HTTP (SSE)**, o que é ideal quando o servidor roda remotamente em um container Docker.
+
+> [!IMPORTANT]
+> O servidor MCP precisa estar **em execução** antes de abrir o VS Code. Certifique-se de que o container Docker está rodando e a porta `3100` está acessível a partir da sua máquina.
+
+#### Pré-requisito: Iniciar o Servidor Docker
+
+Na máquina remota (ou localmente), execute:
+```bash
+docker-compose up -d
+```
+O servidor ficará disponível em: `http://<IP-DO-SERVIDOR>:3100/mcp`
+
+#### Configuração do VS Code
+
+Existem duas formas de configurar o MCP no VS Code:
+
+**Opção 1: Via arquivo de workspace (`.vscode/mcp.json`)** *(recomendado para projetos)*
+
+Crie ou edite o arquivo `.vscode/mcp.json` na raiz do seu projeto:
+```json
+{
+  "servers": {
+    "oracle-db": {
+      "type": "http",
+      "url": "http://<IP-DO-SERVIDOR>:3100/mcp"
+    }
+  }
+}
+```
+
+**Opção 2: Via configuração global do usuário (`settings.json`)**
+
+Abra as configurações do VS Code (`Ctrl+Shift+P` → `Open User Settings (JSON)`) e adicione:
+```json
+{
+  "mcp": {
+    "servers": {
+      "oracle-db": {
+        "type": "http",
+        "url": "http://<IP-DO-SERVIDOR>:3100/mcp"
+      }
+    }
+  }
+}
+```
+
+> [!NOTE]
+> Substitua `<IP-DO-SERVIDOR>` pelo endereço IP da máquina que está rodando o container Docker. Se for local, use `localhost` ou `127.0.0.1`.
+
+#### Exemplos por cenário
+
+**Servidor Docker rodando localmente:**
+```json
+{
+  "servers": {
+    "oracle-db": {
+      "type": "http",
+      "url": "http://localhost:3100/mcp"
+    }
+  }
+}
+```
+
+**Servidor Docker rodando em máquina remota da rede:**
+```json
+{
+  "servers": {
+    "oracle-db": {
+      "type": "http",
+      "url": "http://192.168.1.100:3100/mcp"
+    }
+  }
+}
+```
+
+**Servidor Docker com acesso via hostname:**
+```json
+{
+  "servers": {
+    "oracle-db": {
+      "type": "http",
+      "url": "http://meu-servidor-dev:3100/mcp"
+    }
+  }
+}
+```
+
+#### Verificar Conexão no VS Code
+
+Após configurar, acesse o painel **GitHub Copilot Chat** (ou a extensão MCP instalada) e use:
+- `#oracle_health_check` — para verificar se a conexão está ativa
+- `#oracle_query` com `SELECT 1 FROM DUAL` — para testar uma consulta básica
+
+> [!TIP]
+> Se o servidor for remoto e estiver em rede corporativa ou VPN, certifique-se de que a porta `3100` está liberada no firewall da máquina servidora. Para verificar a conectividade: `telnet <IP-DO-SERVIDOR> 3100`
+
+---
+
 ## **HTTP/SSE Transport**
+
 
 - **Resumo:** O servidor suporta o transporte HTTP com SSE (Server-Sent Events) conforme a especificação MCP. Neste modo, clientes abrem uma conexão SSE (GET) para receber mensagens do servidor e enviam requisições POST para o endpoint fornecido pelo evento `endpoint`.
 - **Modo padrão:** HTTP/SSE com StreamableHTTPServerTransport.
@@ -265,7 +325,10 @@ npm run build
 # usar o script npm incluído (inicia em 127.0.0.1:3100)
 npm run start:http
 
-# ou explicitamente
+# ou explicitamente usando tsx
+MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 npx tsx index.ts
+
+# ou compilado (requer build)
 MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js
 ```
 
@@ -303,10 +366,6 @@ ORACLE_PASSWORD=hr
 
 # Ou usar connection string completa
 ORACLE_CONNECTION_STRING="(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XE)))"
-
-# Para versões antigas do Oracle (pré-11g)
-ORACLE_OLD_CRYPTO=true
-ORACLE_CLIENT_LIB_DIR=/caminho/para/instantclient
 ```
 
 ### Configuração Baseada em Java Existente
@@ -319,7 +378,6 @@ ORACLE_PORT=port
 ORACLE_SERVICE_NAME=service
 ORACLE_USERNAME=user
 ORACLE_PASSWORD=password
-ORACLE_OLD_CRYPTO=true
 ORACLE_FETCH_SIZE=100  # Baseado em DataSourceCrmConfig.java
 ```
 
@@ -354,127 +412,10 @@ npm run inspector
 
 ### Consulta Simples
 ```sql
-SELECT * FROM employees WHERE department_id = 10
-```
-
-### Criar Tabela
-```sql
-CREATE TABLE test_table (
-    id NUMBER PRIMARY KEY,
-    name VARCHAR2(100) NOT NULL,
-    created_date DATE DEFAULT SYSDATE
-)
-```
-
-### Inserir Dados
-```sql
-INSERT INTO test_table (id, name) VALUES (1, 'Test Record')
-```
-
-### Transação Complexa
-```sql
--- Comando 1
-INSERT INTO customers (id, name) VALUES (1, 'Cliente Test');
--- Comando 2  
-UPDATE orders SET customer_id = 1 WHERE id = 100;
--- Comando 3
-DELETE FROM temp_data WHERE processed = 'Y';
+SELECT 1 FROM dual
 ```
 
 ## 🔧 Solução de Problemas
-
-### ⚠️ Erro Oracle 9g: Password Verifier Not Supported
-Se você receber o erro "password verifier type 0x939 is not supported by node-oracledb in Thin mode" com **Oracle 9g**:
-
-**Solução OBRIGATÓRIA para Oracle 9g:**
-
-### 📦 Passo 1: Baixar o Oracle Instant Client 19.26
-```bash
-# Baixar de:
-# https://download.oracle.com/otn_software/nt/instantclient/1926000/instantclient-basic-windows.x64-19.26.0.0.0dbru.zip
-
-# Extrair para:
-C:\oracle\instantclient_19_26
-```
-
-### ⚙️ Passo 2: Configurar variáveis obrigatórias
-```bash
-ORACLE_OLD_CRYPTO=true
-ORACLE_CLIENT_LIB_DIR=C:\oracle\instantclient_19_26
-```
-
-### 🚀 Para versões Oracle 10g-11g: Tentar sem o Instant Client primeiro
-```bash
-ORACLE_OLD_CRYPTO=true
-```
-
-### 📦 Se falhar com 10g-11g, instalar o Oracle Instant Client
-1. **Baixar o Oracle Instant Client:**
-   - Windows: [Oracle Instant Client para Windows](https://www.oracle.com/database/technologies/instant-client/winx64-downloads.html)
-   - Linux: [Oracle Instant Client para Linux](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html)
-   - macOS: [Oracle Instant Client para macOS](https://www.oracle.com/database/technologies/instant-client/macos-intel-x86-downloads.html)
-
-2. **Configurar o caminho:**
-```bash
-ORACLE_CLIENT_LIB_DIR=/caminho/para/instantclient
-```
-
-### 📋 Exemplos de configuração:
-
-**Configuração básica (testar primeiro):**
-```bash
-ORACLE_HOST=seu-host-oracle
-ORACLE_PORT=1521
-ORACLE_SERVICE_NAME=seu-servico
-ORACLE_USERNAME=usuario
-ORACLE_PASSWORD=senha
-ORACLE_OLD_CRYPTO=true
-```
-
-**Configuração com Instant Client (se necessário):**
-```bash
-ORACLE_HOST=seu-host-oracle
-ORACLE_PORT=1521
-ORACLE_SERVICE_NAME=seu-servico
-ORACLE_USERNAME=usuario
-ORACLE_PASSWORD=senha
-ORACLE_OLD_CRYPTO=true
-ORACLE_CLIENT_LIB_DIR=/opt/oracle/instantclient_19_8
-```
-
-### ❓ O que é o Oracle Instant Client?
-
-O Oracle Instant Client são bibliotecas nativas que permitem conexões **Thick** (mais compatíveis com Oracle antigo).
-
-**Quando é necessário?**
-- ✅ **NÃO necessário**: Se o seu Oracle for 12c ou superior
-- ⚠️ **Pode ser necessário**: Para Oracle 10g/11g com criptografia antiga
-- ❌ **Obrigatório**: Para funções avançadas (LDAP, conexões wallet, etc.)
-
-**Como saber se eu preciso?**
-1. Teste primeiro apenas com `ORACLE_OLD_CRYPTO=true`
-2. Se receber erros, então instale o Oracle Instant Client
-
-### 📦 Instalação do Oracle Instant Client (Apenas se necessário)
-
-**Windows:**
-1. Baixe o "Basic Package" de [Oracle Downloads](https://www.oracle.com/database/technologies/instant-client/winx64-downloads.html)
-2. Extraia para `C:\oracle\instantclient_XX_Y`
-3. Configure: `ORACLE_CLIENT_LIB_DIR=C:\oracle\instantclient_XX_Y`
-
-**Linux:**
-```bash
-# Ubuntu/Debian
-wget https://download.oracle.com/otn_software/linux/instantclient/XXX/instantclient-basic-linux.x64-XX.Y.Z.zip
-unzip instantclient-basic-linux.x64-XX.Y.Z.zip
-export ORACLE_CLIENT_LIB_DIR=/opt/oracle/instantclient_XX_Y
-```
-
-**macOS:**
-```bash
-# Baixar da Oracle e extrair
-export ORACLE_CLIENT_LIB_DIR=/opt/oracle/instantclient_XX_Y
-```
 
 ### Erro de Conexão TNS
 Verificar:
