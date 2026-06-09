@@ -54,3 +54,4 @@ Analisado em: 2026-06-01
 - Start HTTP: `npm run start:http`
 - Testes: `npm test`
 - Inspector: `npm run inspector`
+- Gerador de chaves de API: `npm run generate-key` (emite API Key + SHA-256 para configuracao no `.env`)

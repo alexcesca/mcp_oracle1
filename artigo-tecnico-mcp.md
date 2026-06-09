@@ -26,16 +26,19 @@ O projeto `@grec0/mcp-oracle-db` implementa um servidor MCP completo que expõe 
 ### 2.1 O ponto de partida
 
 ```
-.
-├── index.ts                     ← Entry point: HTTP server + McpServer
+.                                     ← novo: common/auth.ts
+├── index.ts                     ← Entry point: HTTP server + McpServer + auth middleware
 ├── tools/
 │   ├── oracle-service.ts        ← Abstração sobre oracledb
 │   └── register-tools.ts        ← Registro de todas as tools no McpServer
 ├── common/
+│   ├── auth.ts                  ← Bearer Token, SHA-256, rate limiting (RFC 6750)
 │   ├── leite-aggregation.ts     ← Lógica de domínio: SQL dinâmico seguro
 │   ├── logger.ts                ← Logger mínimo com controle de nível
 │   ├── utils.ts                 ← Helpers: formatação, validação SQL
 │   └── version.ts
+├── scripts/
+│   └── generate-key.mjs         ← Gerador de API keys + hash SHA-256
 └── types/
     └── oracledb.d.ts
 ```
@@ -102,7 +105,106 @@ O driver oficial da Oracle para Node.js, com suporte a connection pooling, bind 
 
 ---
 
-## 3. Registrando o Servidor HTTP com Controle de Sessão e CORS
+## 3. Autenticacao MCP: Bearer Token com Fail-Safe
+
+Antes de chegarmos ao core da tool de leite, vale entender a camada de segurança que protege todas as rotas do servidor. O projeto implementa autenticação conforme o [MCP Spec 2025-03-26 §Authorization](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization/) e RFC 6750.
+
+### 3.1 Por que não armazenar a chave em texto simples?
+
+O arquivo `.env` é facilmente vazável: logs de CI, backups, erros de permissão de arquivo. Se a chave estiver em texto simples no `.env`, um vazamento expõe a credencial diretamente. A solução é armazenar apenas o **hash SHA-256** da chave:
+
+```bash
+# O operador gera a chave e o hash
+npm run generate-key
+# Saida:
+#   API Key   : lZR10ooMNjLr31UyLgBGm8XbBJOxpBBhGmyBKDnFc80
+#   SHA-256   : 71e5853bdbc750bcecaf6d9b9d0dbee533470a74cac8ca8a0393add3ac1a4a19
+
+# No .env do servidor: apenas o hash
+MCP_API_KEYS=71e5853bdbc750bcecaf6d9b9d0dbee533470a74cac8ca8a0393add3ac1a4a19
+
+# No .vscode/mcp.json do cliente: apenas a API Key original
+# "Authorization": "Bearer lZR10ooMNjLr31UyLgBGm8XbBJOxpBBhGmyBKDnFc80"
+```
+
+Um vazamento do `.env` expõe somente o hash — computacionalmente inviável de reverter para a chave original (pré-imagem SHA-256).
+
+### 3.2 Comparação timing-safe
+
+Uma implementação naive de validação de segredos usa `===`, que interrompe a comparação no primeiro byte diferente. Um atacante com acesso a métricas de latência pode explorar essa variação de tempo para deduzir a chave byte a byte (timing attack). A proteção é usar `timingSafeEqual` do módulo nativo `node:crypto`:
+
+```typescript
+// common/auth.ts
+import { timingSafeEqual, createHash } from 'node:crypto';
+
+function safeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'hex');
+  const bufB = Buffer.from(b, 'hex');
+  if (bufA.length !== bufB.length) {
+    // Executa operação fictícia para igualar o tempo mesmo com tamanhos diferentes
+    timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
+
+// Na validação: comparamos hashes, nunca as chaves originais
+const providedHash = createHash('sha256').update(providedKey, 'utf8').digest('hex');
+for (const storedHash of config.apiKeyHashes) {
+  if (safeStringEqual(providedHash, storedHash)) {
+    return null; // autenticado
+  }
+}
+```
+
+### 3.3 Rate limiting e fail-safe
+
+O middleware aplica rate limiting por IP antes da validação da chave — isso protege contra força-bruta mesmo quando a chave ainda não foi verificada:
+
+```typescript
+// Fluxo de autenticação em authenticateRequest()
+const rateCheck = checkRateLimit(clientIp, config);
+if (!rateCheck.allowed) {
+  return { status: 429, error: 'Too Many Requests', retryAfter: rateCheck.retryAfter };
+}
+
+// Fail-safe: auth habilitada + sem chaves configuradas = 503, nunca falha aberta
+if (config.apiKeyHashes.size === 0) {
+  return { status: 503, error: 'Server misconfiguration: no API keys configured.' };
+}
+```
+
+O comportamento fail-safe é deliberado: se o operador habilitar auth mas esquecer de configurar `MCP_API_KEYS`, o servidor rejeita **toda** requisição com 503. É mais seguro (e mais fácil de diagnosticar) do que silenciosamente permitir acesso irrestrito.
+
+### 3.4 Integração no request handler
+
+```typescript
+// index.ts — middleware aplicado antes de qualquer rota MCP
+const authConfig: AuthConfig = parseAuthConfig();
+
+const requestHandler = async (req, res) => {
+  // OPTIONS (preflight CORS) — isento de auth
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  // Discovery público (RFC 8414 / MCP Spec)
+  if (url.pathname === '/.well-known/oauth-authorization-server') {
+    res.end(JSON.stringify(buildOAuthMetadata(baseUrl))); return;
+  }
+
+  // Autentica toda requisição restante
+  const authError = authenticateRequest(req, authConfig);
+  if (authError) {
+    sendAuthError(res, authError); // inclui WWW-Authenticate em 401
+    return;
+  }
+
+  // ... roteamento MCP normal
+};
+```
+
+---
+
+## 4. Registrando o Servidor HTTP com Controle de Sessão e CORS
 
 Antes das tools, o servidor HTTP precisa estar configurado corretamente. O trecho abaixo mostra como o `index.ts` configura o transporte com proteção contra DNS rebinding e controle de origem:
 
@@ -126,11 +228,11 @@ O modo `stateful` vs `stateless` é configurável via variável de ambiente `MCP
 
 ---
 
-## 4. O Core do Artigo: Construindo a Tool `oracle_resumo_programacao_leite`
+## 5. O Core do Artigo: Construindo a Tool `oracle_resumo_programacao_leite`
 
 Esta tool encapsula um pipeline de negócio de três etapas em uma única chamada MCP. Vamos percorrê-la camada por camada.
 
-### 4.1 O Schema Zod — O contrato que a LLM lê
+### 5.1 O Schema Zod — O contrato que a LLM lê
 
 ```typescript
 // tools/register-tools.ts
@@ -199,7 +301,7 @@ server.tool(
 
 ---
 
-### 4.2 Resolução de período — Validação no domínio, não no schema
+### 5.2 Resolução de período — Validação no domínio, não no schema
 
 O Zod valida tipos e formatos básicos. Mas a regra "se apenas uma data for informada, é erro" é uma **regra de negócio** — ela pertence ao domínio, não ao schema. Por isso existe `resolvePeriod`:
 
@@ -244,7 +346,7 @@ Note o uso de `Date.UTC` para evitar ambiguidades de fuso horário — um bug cl
 
 ---
 
-### 4.3 O handler em três etapas
+### 5.3 O handler em três etapas
 
 ```typescript
 async (args) => {
@@ -357,7 +459,7 @@ async (args) => {
 
 ---
 
-### 4.4 O SQL dinâmico seguro — `buildLeiteAggregationQuery`
+### 5.4 O SQL dinâmico seguro — `buildLeiteAggregationQuery`
 
 Esta função em `common/leite-aggregation.ts` é o coração da segurança da tool. Ela constrói SQL dinamicamente, mas com **zero interpolação direta de input do usuário**:
 
@@ -440,11 +542,11 @@ WHERE ROWNUM <= :maxRows
 
 ---
 
-## 5. Retornos Determinísticos vs. Estocásticos: Por Que Isso Importa
+## 6. Retornos Determinísticos vs. Estocásticos: Por Que Isso Importa
 
 Esta seção responde uma pergunta que todo dev faz na primeira semana com LLMs: *"Por que a LLM às vezes inventa números?"*
 
-### 5.1 O retorno determinístico da tool
+### 6.1 O retorno determinístico da tool
 
 Tudo o que acontece dentro do handler TypeScript é **determinístico no sentido computacional clássico**: dado o mesmo input, o mesmo Oracle, o mesmo estado da tabela `resumo_programacao_leite_obi`, você obterá exatamente a mesma tabela de resultado. Não há aleatoriedade, não há probabilidade — é código imperativo.
 
@@ -457,7 +559,7 @@ Output (sempre o mesmo para o mesmo estado do BD):
 | U02     | Unidade Sul    | 98.500                    |
 ```
 
-### 5.2 O retorno estocástico da LLM
+### 6.2 O retorno estocástico da LLM
 
 A LLM, por sua natureza, é um modelo probabilístico. Cada token gerado é amostrado de uma distribuição de probabilidade. Isso significa que ao redigir a resposta final para o usuário com base no retorno da tool, a LLM pode:
 
@@ -465,7 +567,7 @@ A LLM, por sua natureza, é um modelo probabilístico. Cada token gerado é amos
 - Escolher **quais insights destacar** da tabela
 - Em casos sem grounding, **alucinar valores** que parecem plausíveis
 
-### 5.3 Como a tool âncora a LLM (Grounding)
+### 6.3 Como a tool âncora a LLM (Grounding)
 
 O retorno estruturado da tool funciona como uma **âncora factual** — o campo de gravidade que puxa a LLM de volta ao mundo real. Quando a LLM recebe:
 
@@ -490,9 +592,9 @@ Ela tem **fatos concretos** para trabalhar. A parte estocástica (como ela redig
 
 ---
 
-## 6. Controle de Logs: Depurando o Comportamento da LLM
+## 7. Controle de Logs: Depurando o Comportamento da LLM
 
-### 6.1 O logger do projeto
+### 7.1 O logger do projeto
 
 O projeto usa um logger mínimo customizado, sem dependências externas:
 
@@ -530,7 +632,7 @@ export const logger = {
 
 **Por que `console.error` em vez de `console.log`?** Porque o transporte MCP via stdio usa `stdout` para o protocolo JSON-RPC. Qualquer `console.log` acidental no `stdout` corrompe o stream. Usar `stderr` para todos os logs é uma convenção de segurança para servidores MCP.
 
-### 6.2 O que logar e por quê
+### 7.2 O que logar e por quê
 
 O `index.ts` loga o estado completo na inicialização:
 
@@ -562,7 +664,7 @@ log.info({ toolName: 'oracle_resumo_programacao_leite', period }, 'Tool invocada
 
 ---
 
-## 7. Outras Tools do Projeto: Referência Rápida
+## 8. Outras Tools do Projeto: Referência Rápida
 
 O projeto inclui mais 7 tools além da tool de leite. Elas ilustram padrões complementares:
 
@@ -576,7 +678,7 @@ A tool `oracle_query` é um bom contra-exemplo: ela aceita SQL livre, mas usa `i
 
 ---
 
-## 8. Resumo: O Fluxo Completo em um Diagrama
+## 9. Resumo: O Fluxo Completo em um Diagrama
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -611,11 +713,19 @@ A tool `oracle_query` é um bom contra-exemplo: ela aceita SQL livre, mas usa `i
 
 ---
 
-## 9. Glossário e Links de Aprofundamento
+## 10. Glossário e Links de Aprofundamento
 
 | Termo | Definição resumida |
 |---|---|
 | **MCP (Model Context Protocol)** | Protocolo aberto para comunicação padronizada entre LLMs e servidores de ferramentas/contexto |
+| **Bearer Token** | Credencial opaca enviada no header `Authorization: Bearer <token>` (RFC 6750) |
+| **SHA-256** | Função hash criptográfica de 256 bits; usada para armazenar fingerprints de API keys |
+| **Timing Attack** | Ataque que explora variação de tempo de execução para inferir segredos |
+| **timingSafeEqual** | Função do `node:crypto` que compara buffers em tempo constante, prevenindo timing attacks |
+| **Fail-safe** | Design onde falha de configuração resulta em negação de acesso (oposto de falha aberta) |
+| **Rate Limiting** | Controle de frequência de requisições por IP para prevenir força-bruta e DDoS |
+| **RFC 6750** | Padrão IETF que define como Bearer Tokens devem ser usados em requisições HTTP |
+| **RFC 8414** | Padrão IETF para discovery de Authorization Servers (metadata endpoint) |
 | **Tool Grounding** | Técnica de ancorar a LLM a fatos concretos via ferramentas, reduzindo alucinações |
 | **Bind Variables** | Parâmetros tipados passados separadamente do SQL, impedindo SQL injection |
 | **BIND_OUT** | Direção de bind que recebe valores de saída de stored procedures Oracle |
@@ -629,12 +739,16 @@ A tool `oracle_query` é um bom contra-exemplo: ela aceita SQL livre, mas usa `i
 
 - **Documentação Oficial do MCP:** https://modelcontextprotocol.io/docs
 - **Especificação do protocolo MCP:** https://spec.modelcontextprotocol.io
+- **MCP Spec 2025-03-26 §Authorization:** https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization/
+- **RFC 6750 — Bearer Token Usage:** https://www.rfc-editor.org/rfc/rfc6750
+- **RFC 8414 — OAuth 2.0 Authorization Server Metadata:** https://www.rfc-editor.org/rfc/rfc8414
 - **TypeScript SDK do MCP:** https://github.com/modelcontextprotocol/typescript-sdk
 - **Zod — Validação e inferência de tipos:** https://zod.dev
 - **node-oracledb — Driver oficial Oracle:** https://node-oracledb.readthedocs.io
 - **Pino — Logger JSON de alta performance:** https://getpino.io
 - **MCP Inspector — Ferramenta de debug:** `npx @modelcontextprotocol/inspector`
+- **OWASP API Security Top 10:** https://owasp.org/API-Security/
 
 ---
 
-*Artigo baseado no código-fonte do projeto `@grec0/mcp-oracle-db` v0.1.4.*
+*Artigo baseado no código-fonte do projeto `@grec0/mcp-oracle-db` v0.1.4 — inclui autenticação MCP via Bearer Token (RFC 6750) implementada em 2026-06-08.*

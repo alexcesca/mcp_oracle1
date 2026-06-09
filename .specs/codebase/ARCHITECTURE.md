@@ -5,6 +5,7 @@ Padrao: Monolito modular (servidor MCP de processo unico com modulos em camadas)
 ## Estrutura de Alto Nivel
 
 - Ponto de entrada (`index.ts`): inicializa o servidor MCP em StreamableHTTP sobre HTTP/SSE, gerencia ciclo de vida e desligamento.
+- **Middleware de autenticacao** (`common/auth.ts`): valida Bearer Token antes de qualquer rota MCP; aplica rate limiting por IP.
 - Registro de ferramentas (`tools/register-tools.ts`): declara ferramentas MCP, schemas de entrada e formatacao de resposta.
 - Camada de servico (`tools/oracle-service.ts`): encapsula inicializacao do cliente Oracle, pooling, execucao de consulta/comando e consultas de metadados.
 - Camada de dominio/helper (`common/*.ts`): logica auxiliar segura para SQL, resolucao de periodo, construtor de consulta de agregacao com allowlist, logger com niveis e tipos compartilhados.
@@ -13,12 +14,38 @@ Padrao: Monolito modular (servidor MCP de processo unico com modulos em camadas)
 
 1. O processo inicia em `index.ts`.
 2. `McpServer` e criado com nome e versao.
-3. `registerAllTools` registra cada ferramenta com schema de entrada Zod.
-4. A primeira chamada de ferramenta inicializa `OracleService` de forma lazy.
-5. `OracleService` carrega configuracao de ambiente e inicializa node-oracledb.
-6. O handler da ferramenta chama um metodo de servico (`executeQuery`, `executeCommand`, `getTables`, etc.).
-7. O servico obtem uma conexao do pool, executa SQL, mapeia resultado e fecha a conexao.
-8. O handler da ferramenta formata o texto de resposta para o cliente MCP.
+3. `parseAuthConfig` le `MCP_API_KEYS`, `MCP_AUTH_ENABLED` e parametros de rate limit do ambiente.
+4. `registerAllTools` registra cada ferramenta com schema de entrada Zod.
+5. A primeira chamada de ferramenta inicializa `OracleService` de forma lazy.
+6. `OracleService` carrega configuracao de ambiente e inicializa node-oracledb.
+7. O handler da ferramenta chama um metodo de servico (`executeQuery`, `executeCommand`, `getTables`, etc.).
+8. O servico obtem uma conexao do pool, executa SQL, mapeia resultado e fecha a conexao.
+9. O handler da ferramenta formata o texto de resposta para o cliente MCP.
+
+## Fluxo de Autenticacao por Requisicao
+
+```
+Requisicao HTTP
+     │
+     ├─ OPTIONS? → 204 (CORS preflight — sem auth)
+     │
+     ├─ GET /.well-known/oauth-authorization-server → JSON (publica)
+     │
+     ├─ checkRateLimit(IP) ──────────────────────────────┐
+     │    excedeu limite?                                 │
+     │    └─ sim → 429 + Retry-After ◄───────────────────┘
+     │
+     ├─ auth desabilitada? → prossegue
+     │
+     ├─ sem chaves configuradas? → 503 (fail-safe)
+     │
+     ├─ extractApiKey(req) → ausente? → 401 + WWW-Authenticate
+     │
+     ├─ hashApiKey(key) → timingSafeEqual(hash, stored_hash)
+     │    invalido? → 403
+     │
+     └─ valido → roteamento MCP normal
+```
 
 ## Arquitetura de Transporte
 

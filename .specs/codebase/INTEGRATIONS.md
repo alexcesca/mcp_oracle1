@@ -27,6 +27,38 @@ Fonte primaria de dados e alvo de execucao para todas as operacoes SQL/PLSQL.
   - `ORACLE_OLD_CRYPTO=true` habilita o caminho de compatibilidade em modo thick
   - `ORACLE_CLIENT_LIB_DIR` opcional
 
+## Autenticacao MCP (Bearer Token)
+
+### Finalidade
+
+Controlar acesso ao servidor MCP por meio de API keys, em conformidade com MCP Spec 2025-03-26 §Authorization e RFC 6750.
+
+### Pontos de Integracao
+
+- Middleware: `common/auth.ts` — logica completa de autenticacao e rate limiting
+- Aplicado em: `index.ts:requestHandler` — intercepta todas as rotas exceto `OPTIONS` e `/.well-known/oauth-authorization-server`
+- Configuracao do cliente: `.vscode/mcp.json` — header `Authorization: Bearer <key>`
+- Gerador de chaves: `scripts/generate-key.mjs`
+
+### Variaveis de Ambiente
+
+| Variavel | Descricao | Padrao |
+|---|---|---|
+| `MCP_AUTH_ENABLED` | Habilitar/desabilitar autenticacao | `true` |
+| `MCP_API_KEYS` | Hashes SHA-256 separados por virgula | — |
+| `MCP_API_KEYS_PLAIN` | Chaves plain-text (hasheadas no startup) | — |
+| `MCP_RATE_LIMIT_WINDOW_MS` | Janela de rate limit em ms | `60000` |
+| `MCP_RATE_LIMIT_MAX` | Max requisicoes por janela por IP | `100` |
+| `MCP_RATE_LIMIT_BLOCK_MS` | Duracao do bloqueio pos-limite em ms | `300000` |
+
+### Propriedades de Seguranca
+
+- Chaves armazenadas somente como SHA-256 hex — jamais em texto simples
+- Comparacao timing-safe via `node:crypto.timingSafeEqual`
+- Rate limiting in-memory por IP com limpeza periodica (`.unref()`)
+- Fail-safe: auth habilitada + sem chaves → 503 (nunca falha aberta)
+- Endpoint publico de discovery OAuth: `GET /.well-known/oauth-authorization-server` (RFC 8414)
+
 ## SDK MCP (Model Context Protocol)
 
 ### Finalidade

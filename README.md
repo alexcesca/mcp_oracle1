@@ -11,6 +11,7 @@ Servidor MCP (Model Context Protocol) para integração completa com Oracle Data
 - **Pool de Conexões**: Gestão eficiente de conexões com Oracle
 - **Compatibilidade**: Otimizado para Oracle Database 19c ou superior
 - **Monitoramento**: Health checks e estatísticas de conexão
+- **Autenticação**: Bearer Token (RFC 6750) com hash SHA-256, rate limiting por IP e fail-safe configurável
 
 ## 📋 Ferramentas Disponíveis
 
@@ -111,6 +112,17 @@ npm run build
 | `ORACLE_POOL_TIMEOUT` | Timeout do pool em segundos | `60` |
 | `ORACLE_FETCH_SIZE` | Linhas a buscar por lote | `100` |
 | `ORACLE_STMT_CACHE_SIZE` | Tamanho do cache de statements | `30` |
+
+**Autenticação MCP:**
+
+| Variável | Descrição | Padrão |
+|----------|-------------|-------------|
+| `MCP_AUTH_ENABLED` | Habilitar autenticação | `true` |
+| `MCP_API_KEYS` | Hashes SHA-256 das chaves (separados por vírgula) | — |
+| `MCP_API_KEYS_PLAIN` | Chaves em texto simples, hasheadas no startup (dev/CI) | — |
+| `MCP_RATE_LIMIT_WINDOW_MS` | Janela de rate limit em ms | `60000` |
+| `MCP_RATE_LIMIT_MAX` | Máx. requisições por janela por IP | `100` |
+| `MCP_RATE_LIMIT_BLOCK_MS` | Duração do bloqueio após exceder limite em ms | `300000` |
 
 ### Configuração MCP em Aplicações USANDO NPX (RECOMENDADO)
 
@@ -231,8 +243,10 @@ Crie ou edite o arquivo `.vscode/mcp.json` na raiz do seu projeto:
 {
   "servers": {
     "oracle-db": {
-      "type": "http",
-      "url": "http://<IP-DO-SERVIDOR>:3100/mcp"
+      "url": "http://<IP-DO-SERVIDOR>:3100/mcp",
+      "headers": {
+        "Authorization": "Bearer <sua-api-key>"
+      }
     }
   }
 }
@@ -246,8 +260,10 @@ Abra as configurações do VS Code (`Ctrl+Shift+P` → `Open User Settings (JSON
   "mcp": {
     "servers": {
       "oracle-db": {
-        "type": "http",
-        "url": "http://<IP-DO-SERVIDOR>:3100/mcp"
+        "url": "http://<IP-DO-SERVIDOR>:3100/mcp",
+        "headers": {
+          "Authorization": "Bearer <sua-api-key>"
+        }
       }
     }
   }
@@ -264,8 +280,8 @@ Abra as configurações do VS Code (`Ctrl+Shift+P` → `Open User Settings (JSON
 {
   "servers": {
     "oracle-db": {
-      "type": "http",
-      "url": "http://localhost:3100/mcp"
+      "url": "http://localhost:3100/mcp",
+      "headers": { "Authorization": "Bearer <sua-api-key>" }
     }
   }
 }
@@ -276,8 +292,8 @@ Abra as configurações do VS Code (`Ctrl+Shift+P` → `Open User Settings (JSON
 {
   "servers": {
     "oracle-db": {
-      "type": "http",
-      "url": "http://192.168.1.100:3100/mcp"
+      "url": "http://192.168.1.100:3100/mcp",
+      "headers": { "Authorization": "Bearer <sua-api-key>" }
     }
   }
 }
@@ -288,8 +304,8 @@ Abra as configurações do VS Code (`Ctrl+Shift+P` → `Open User Settings (JSON
 {
   "servers": {
     "oracle-db": {
-      "type": "http",
-      "url": "http://meu-servidor-dev:3100/mcp"
+      "url": "http://meu-servidor-dev:3100/mcp",
+      "headers": { "Authorization": "Bearer <sua-api-key>" }
     }
   }
 }
@@ -332,7 +348,7 @@ MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 npx tsx index.ts
 MCP_HTTP_HOST=127.0.0.1 MCP_HTTP_PORT=3100 node dist/index.js
 ```
 
-- **Segurança:** o servidor valida o header `Origin` para mitigar ataques de DNS rebinding. Em implantação local, o servidor por padrão liga somente em `127.0.0.1`.
+- **Segurança:** o servidor valida o header `Origin` para mitigar ataques de DNS rebinding. Em implantação local, o servidor por padrão liga somente em `127.0.0.1`. Todas as rotas exigem autenticação via Bearer Token (veja seção [🔐 Segurança](#-segurança)).
 
 - **Comportamento do cliente:**
   - Cliente abre `GET http://127.0.0.1:3100/mcp` para iniciar SSE. O servidor responde com um evento `endpoint` que contém a URI para envio de mensagens (POST).
@@ -445,6 +461,68 @@ npm test
 - **Sistemas**: Windows, Linux, macOS
 
 ## 🔐 Segurança
+
+### Autenticação via Bearer Token
+
+O servidor implementa autenticação conforme [MCP Spec 2025-03-26 §Authorization](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization/) e RFC 6750. Todas as rotas exigem uma chave de API válida (exceto preflight CORS e o endpoint de discovery OAuth).
+
+#### Gerando uma chave de API
+
+```bash
+npm run generate-key
+```
+
+O script exibe duas linhas:
+- **API Key** → guarde no gerenciador de segredos e configure no cliente
+- **SHA-256** → adicione ao `.env` do servidor (nunca a chave em texto simples)
+
+#### Configurando o servidor (`.env`)
+
+```bash
+# Hash SHA-256 da(s) chave(s) — separar múltiplas por vírgula
+MCP_API_KEYS=<hash-gerado-por-npm-run-generate-key>
+
+# Habilitar/desabilitar auth (padrão: true)
+# MCP_AUTH_ENABLED=false  # apenas para dev local isolado
+
+# Rate limiting por IP
+MCP_RATE_LIMIT_WINDOW_MS=60000   # janela de 1 minuto
+MCP_RATE_LIMIT_MAX=100           # máx. requisições por janela
+MCP_RATE_LIMIT_BLOCK_MS=300000  # bloqueio de 5 min ao exceder
+```
+
+> [!IMPORTANT]
+> Após alterar o `.env`, reinicie o container com `docker compose up -d` (sem `--build`) para que as novas variáveis sejam carregadas.
+
+#### Configurando o cliente (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "oracle-db": {
+      "url": "http://localhost:3100/mcp",
+      "headers": {
+        "Authorization": "Bearer <sua-api-key>"
+      }
+    }
+  }
+}
+```
+
+#### Propriedades de segurança
+
+| Propriedade | Implementação |
+|---|---|
+| Chaves jamais armazenadas em texto simples | Somente hash SHA-256 hex no `.env` |
+| Proteção contra timing attacks | `node:crypto.timingSafeEqual` na comparação |
+| Proteção contra força-bruta | Rate limiting in-memory por IP com bloqueio |
+| Fail-safe | Auth habilitada + zero chaves → HTTP 503 (nunca falha aberta) |
+| Padrão de header | `Authorization: Bearer <key>` (RFC 6750) ou `x-api-key: <key>` |
+| Discovery OAuth | `GET /.well-known/oauth-authorization-server` (RFC 8414, público) |
+
+---
+
+### Outras proteções
 
 - Validação de SQL para prevenir injeções básicas
 - Gestão segura de credenciais via variáveis de ambiente

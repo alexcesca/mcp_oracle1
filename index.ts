@@ -10,6 +10,14 @@ import { OracleService } from "./tools/oracle-service.js";
 import { registerAllTools } from "./tools/register-tools.js";
 import { VERSION } from "./common/version.js";
 import { logger } from "./common/logger.js";
+import {
+  parseAuthConfig,
+  authenticateRequest,
+  sendAuthError,
+  buildOAuthMetadata,
+  stopCleanupTimer,
+  type AuthConfig,
+} from "./common/auth.js";
 
 // Criar o Servidor MCP com a configuração adequada
 const server = new McpServer({
@@ -175,6 +183,16 @@ async function runServer(overrides?: Partial<HttpConfig>) {
 
     const httpConfig = resolveHttpConfig(overrides);
 
+    // --- Autenticação ---
+    const authConfig: AuthConfig = parseAuthConfig();
+    if (!authConfig.enabled) {
+      logger.info('[AUTH] ⚠️  Autenticação DESABILITADA (MCP_AUTH_ENABLED=false). Recomendado apenas para desenvolvimento local.');
+    } else if (authConfig.apiKeyHashes.size === 0) {
+      logger.error('[AUTH] ❌ Autenticação habilitada mas MCP_API_KEYS / MCP_API_KEYS_PLAIN não configurados. Todas as requisições serão rejeitadas.');
+    } else {
+      logger.info(`[AUTH] ✅ Autenticação habilitada – ${authConfig.apiKeyHashes.size} chave(s) configurada(s).`);
+    }
+
     const transports = new Map<string, SSEServerTransport>();
 
     logger.info('Configuração HTTP MCP:');
@@ -204,6 +222,21 @@ async function runServer(overrides?: Partial<HttpConfig>) {
         if (req.method === 'OPTIONS') {
           res.writeHead(204);
           res.end();
+          return;
+        }
+
+        // GET /.well-known/oauth-authorization-server  (MCP spec discovery)
+        if (url.pathname === '/.well-known/oauth-authorization-server' && req.method === 'GET') {
+          const baseUrl = `http://${req.headers.host || `${httpConfig.host}:${httpConfig.port}`}`;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(buildOAuthMetadata(baseUrl)));
+          return;
+        }
+
+        // --- Autenticação (todas as rotas protegidas, exceto OPTIONS e well-known) ---
+        const authError = authenticateRequest(req, authConfig);
+        if (authError) {
+          sendAuthError(res, authError);
           return;
         }
 
@@ -285,6 +318,8 @@ async function shutdown(): Promise<void> {
     await new Promise<void>((resolve) => httpServer!.close(() => resolve()));
     httpServer = null;
   }
+
+  stopCleanupTimer();
 
   if (oracleService) {
     await oracleService.close();

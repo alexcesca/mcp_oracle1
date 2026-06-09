@@ -1,12 +1,17 @@
 # Preocupacoes
 
-Analisado em: 2026-06-02
+Analisado em: 2026-06-09
 
 ## Alta Prioridade
 
 Sem preocupacoes ativas de alta prioridade nesta reavaliacao.
 
 ### Resolvidas nesta rodada
+
+7. Servidor MCP sem autenticacao expunha todas as ferramentas Oracle sem controle de acesso.
+   - Evidencia: `common/auth.ts` implementa Bearer Token (RFC 6750), hash SHA-256, comparacao timing-safe, rate limiting por IP e fail-safe 503. `index.ts` aplica o middleware em todas as rotas protegidas. 24/24 testes unitarios passando em `tests/auth.test.ts`.
+
+### Resolvidas em rodadas anteriores
 
 1. Teste unitario de agregacao de leite alinhado ao SQL mapeado.
    - Evidencia: `tests/leite-aggregation.test.ts` agora valida colunas fisicas (`CD_UNID_ORIG`, `FORN_ID_ORIG`, `TOT_REAL_DEST`, `QTDE_PROG`) e passou na execucao local.

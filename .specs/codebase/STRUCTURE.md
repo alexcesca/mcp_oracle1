@@ -5,6 +5,7 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
 ## Arvore de Diretorios (ate 3 niveis)
 
 - `common/`
+  - `auth.ts`
   - `logger.ts`
   - `leite-aggregation.ts`
   - `types.ts`
@@ -14,11 +15,14 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
   - `oracle-service.ts`
   - `register-tools.ts`
 - `tests/`
+  - `auth.test.ts`
   - `http-transport.test.ts`
   - `integration.test.ts`
   - `leite-aggregation.test.ts`
   - `session-mode-config.test.ts`
   - `sql-readonly-classification.test.ts`
+- `scripts/`
+  - `generate-key.mjs`
 - `types/`
   - `oracledb.d.ts`
 - Arquivos de runtime/configuracao na raiz
@@ -32,6 +36,18 @@ Raiz: /home/alex/Oracle/Mcp/mcp-oracle-db/mcp_oracle1
   - `INSTRUCOES DE INSTALACAO.md`
 
 ## Organizacao dos Modulos
+
+### Middleware de Autenticacao MCP
+
+- Finalidade: autenticar requisicoes HTTP via Bearer Token antes do roteamento MCP.
+- Localizacao: `common/auth.ts`
+- Responsabilidades principais:
+  - parse de configuracao de auth via variaveis de ambiente (`parseAuthConfig`)
+  - extracao de Bearer Token ou `x-api-key` da requisicao
+  - hash SHA-256 da chave recebida e comparacao timing-safe
+  - rate limiting por IP com janela e bloqueio configuravel
+  - resposta padrao RFC 6750 (401 + `WWW-Authenticate`, 403, 429 + `Retry-After`, 503 fail-safe)
+  - geracao de metadata OAuth (RFC 8414) para endpoint de discovery
 
 ### Inicializacao do Servidor
 
