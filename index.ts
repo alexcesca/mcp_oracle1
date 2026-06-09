@@ -14,7 +14,6 @@ import {
   parseAuthConfig,
   authenticateRequest,
   sendAuthError,
-  buildOAuthMetadata,
   stopCleanupTimer,
   type AuthConfig,
 } from "./common/auth.js";
@@ -225,15 +224,7 @@ async function runServer(overrides?: Partial<HttpConfig>) {
           return;
         }
 
-        // GET /.well-known/oauth-authorization-server  (MCP spec discovery)
-        if (url.pathname === '/.well-known/oauth-authorization-server' && req.method === 'GET') {
-          const baseUrl = `http://${req.headers.host || `${httpConfig.host}:${httpConfig.port}`}`;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(buildOAuthMetadata(baseUrl)));
-          return;
-        }
-
-        // --- Autenticação (todas as rotas protegidas, exceto OPTIONS e well-known) ---
+        // --- Autenticação (todas as rotas protegidas, exceto OPTIONS) ---
         const authError = authenticateRequest(req, authConfig);
         if (authError) {
           sendAuthError(res, authError);
