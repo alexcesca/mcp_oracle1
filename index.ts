@@ -18,12 +18,6 @@ import {
   type AuthConfig,
 } from "./common/auth.js";
 
-// Criar o Servidor MCP com a configuração adequada
-const server = new McpServer({
-  name: "oracle-db-mcp-server",
-  version: VERSION,
-});
-
 // Criar instância do serviço Oracle (inicialização tardia)
 let oracleService: OracleService | null = null;
 
@@ -38,8 +32,15 @@ function getOracleService(): OracleService {
   return oracleService;
 }
 
-// Registrar todas as ferramentas
-registerAllTools(server, getOracleService);
+/** Cria um McpServer novo (por conexão SSE) e registra todas as ferramentas. */
+function createSessionServer(): McpServer {
+  const sessionServer = new McpServer({
+    name: "oracle-db-mcp-server",
+    version: VERSION,
+  });
+  registerAllTools(sessionServer, getOracleService);
+  return sessionServer;
+}
 
 const DEFAULT_HTTP_HOST = '127.0.0.1';
 const DEFAULT_HTTP_PORT = 3100;
@@ -231,18 +232,20 @@ async function runServer(overrides?: Partial<HttpConfig>) {
           return;
         }
 
-        // GET /mcp -> Start SSE Stream
+        // GET /mcp -> Start SSE Stream (nova instância McpServer por conexão)
         if (url.pathname === httpConfig.path && req.method === 'GET') {
+          const sessionServer = createSessionServer();
           const transport = new SSEServerTransport(httpConfig.path + '/message', res as any, {
             enableDnsRebindingProtection: false
           });
-          
+
           transports.set(transport.sessionId, transport);
           res.on('close', () => {
             transports.delete(transport.sessionId);
+            sessionServer.close().catch(() => {});
           });
 
-          await server.connect(transport);
+          await sessionServer.connect(transport);
           return;
         }
 
@@ -292,7 +295,8 @@ async function runServer(overrides?: Partial<HttpConfig>) {
       "oracle_health_check",
       "oracle_query",
       "oracle_info",
-      "oracle_resumo_programacao_leite"
+      "oracle_resumo_programacao_leite",
+      "oracle_resumo_sobra_racao_aves"
     ]);
 
   } catch (error) {
@@ -315,12 +319,6 @@ async function shutdown(): Promise<void> {
   if (oracleService) {
     await oracleService.close();
   }
-
-  try {
-    await server.close();
-  } catch (error: any) {
-    logger.error('Erro ao fechar o servidor MCP:', error.message || error);
-  }
 }
 
 process.on('SIGINT', async () => {
@@ -336,7 +334,7 @@ process.on('SIGTERM', async () => {
 });
 
 // Exportar funções para uso em testes e controle programático
-export { runServer, shutdown, server, getHttpConfigFromEnv, resolveHttpConfig, parseSessionMode };
+export { runServer, shutdown, createSessionServer, getHttpConfigFromEnv, resolveHttpConfig, parseSessionMode };
 
 // Iniciar o servidor automaticamente por padrão. Para evitar auto-start em testes,
 // defina `MCP_AUTO_START=false` no ambiente antes de importar este módulo.

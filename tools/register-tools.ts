@@ -15,6 +15,11 @@ import {
   buildLeiteAggregationQuery,
   resolvePeriod
 } from "../common/leite-aggregation.js";
+import {
+  ALLOWED_SUM_FIELDS_SOBRA,
+  ALLOWED_GROUP_FIELDS_SOBRA,
+  aggregateSobraAvesRows
+} from "../common/sobra-aves-aggregation.js";
 
 /**
  * Registra todas as ferramentas MCP de Oracle Database no servidor fornecido.
@@ -338,6 +343,161 @@ END;`;
 
         responseText += `\n\n**Campos permitidos (somatórios):** ${Object.keys(ALLOWED_SUM_FIELDS).join(', ')}`;
         responseText += `\n**Campos permitidos (agrupamentos):** ${Object.keys(ALLOWED_GROUP_FIELDS).join(', ')}`;
+
+        return {
+          content: [{ type: "text", text: responseText }],
+        };
+      } catch (error: any) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `❌ **Erro:** ${error.message}` }],
+        };
+      }
+    }
+  );
+
+  // 5. Resumo de sobra de ração por lote de aves (CAP/OBI)
+  server.tool(
+    "oracle_resumo_sobra_racao_aves",
+    "Executa PK_CAP_OBI.PKB_SOBRA_AVC e retorna somatórios de sobra de ração por lote de aves com agrupamentos flexíveis",
+    {
+      dtInic: z.string().optional().describe("Data inicial no formato YYYY-MM-DD"),
+      dtFim: z.string().optional().describe("Data final no formato YYYY-MM-DD"),
+      somatorios: z.array(z.enum([
+        "qtde_entregue",
+        "qtde_sobra",
+        "qtde_sobra_p_ave"
+      ])).min(1).describe(
+        "Campos de somatório: " +
+        "qtde_entregue=quantidade de aves entregue, " +
+        "qtde_sobra=quantidade de ração que sobrou no lote do produtor, " +
+        "qtde_sobra_p_ave=quantidade de ração que sobrou por ave entregue"
+      ),
+      agruparPor: z.array(z.enum([
+        "associado",
+        "filiada",
+        "item",
+        "assistente_tecnico",
+        "unidade_abate",
+        "sexo_aves",
+        "tipo_nao_conformidade",
+        "tipo_sobra",
+        "data_fechamento"
+      ])).min(1).describe(
+        "Campos de agrupamento: " +
+        "associado=cd_fili-cd_asso-cd_prop-cd_aviario-cd_lotcamaves-nome_asso (concatenado), " +
+        "filiada=cd_fili+nome_fili, " +
+        "item=cd_item+descr_item, " +
+        "assistente_tecnico=cd_assis+nome_assis, " +
+        "unidade_abate=cd_unid_abate+abrev_unid_abate, " +
+        "sexo_aves=cd_avessexotv+descr_avessexotv, " +
+        "tipo_nao_conformidade=cd_tpnconfagr+descr_tpnconfagr, " +
+        "tipo_sobra=0(SOBROU no lote)/1(TRANSFERENCIA), " +
+        "data_fechamento=DT_FECH"
+      ),
+      maxRows: z.number().int().min(1).max(5000).optional().default(200).describe("Limite máximo de linhas no resultado agregado"),
+      formatAsTable: z.boolean().optional().default(true).describe("Formatar resultado como tabela")
+    },
+    async (args) => {
+      try {
+        const period = resolvePeriod(args.dtInic, args.dtFim);
+
+        const procSql = `
+DECLARE
+  est_dadoslote pk_cap_obi.t_tab_rec_ddslotavc;
+  sv_sistema    VARCHAR2(5);
+  sv_processo   VARCHAR2(50);
+  sv_msg_erro   VARCHAR2(500);
+  sn_cd_erro    NUMBER(5);
+BEGIN
+  pk_cap_obi.pkb_sobra_avc(
+    ed_dt_ini     => :ed_dt_ini,
+    ed_dt_fim     => :ed_dt_fim,
+    est_dadoslote => est_dadoslote,
+    sv_sistema    => sv_sistema,
+    sv_processo   => sv_processo,
+    sv_msg_erro   => sv_msg_erro,
+    sn_cd_erro    => sn_cd_erro
+  );
+  :sv_sistema  := sv_sistema;
+  :sv_processo := sv_processo;
+  :sv_msg_erro := sv_msg_erro;
+  :sn_cd_erro  := sn_cd_erro;
+  OPEN :cur FOR SELECT * FROM TABLE(est_dadoslote);
+END;`;
+
+        const procResult = await getOracleService().executeProcWithCursor(
+          procSql,
+          {
+            ed_dt_ini:   period.startDate,
+            ed_dt_fim:   period.endDate,
+            sv_sistema:  { dir: oracledb.BIND_OUT, type: oracledb.STRING,  maxSize: 10 },
+            sv_processo: { dir: oracledb.BIND_OUT, type: oracledb.STRING,  maxSize: 50 },
+            sv_msg_erro: { dir: oracledb.BIND_OUT, type: oracledb.STRING,  maxSize: 500 },
+            sn_cd_erro:  { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+            cur:         { dir: oracledb.BIND_OUT, type: oracledb.CURSOR }
+          },
+          args.maxRows * 50   // busca generosa de linhas brutas antes da agregação
+        );
+
+        if (!procResult.success) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `❌ **Erro ao executar PK_CAP_OBI.PKB_SOBRA_AVC:** ${procResult.error}` }],
+          };
+        }
+
+        const outBinds = procResult.data?.outBinds || {};
+        const procErrorCode = outBinds.sn_cd_erro;
+        const procErrorMsg  = outBinds.sv_msg_erro;
+
+        if (procErrorCode && Number(procErrorCode) !== 0) {
+          return {
+            isError: true,
+            content: [{
+              type: "text",
+              text: `❌ **Erro funcional da procedure**\n\nCódigo: ${procErrorCode}\nProcesso: ${outBinds.sv_processo || ''}\nMensagem: ${procErrorMsg || 'Sem mensagem retornada'}`
+            }],
+          };
+        }
+
+        const rawRows = procResult.data?.rows || [];
+
+        const aggregation = aggregateSobraAvesRows({
+          rawRows,
+          sumFields: args.somatorios,
+          groupFields: args.agruparPor,
+          maxRows: args.maxRows
+        });
+
+        let responseText = `🐔 **Resumo Sobra de Ração por Lote de Aves (CAP/OBI)**\n\n`;
+        responseText += `**Período Utilizado:** ${period.startIso} até ${period.endIso}${period.usedDefaultMonth ? ' (mês atual automático)' : ''}\n`;
+        responseText += `**Somatórios:** ${aggregation.selectedSums.join(', ')}\n`;
+        responseText += `**Agrupamentos:** ${aggregation.selectedGroups.join(', ')}\n`;
+        responseText += `**Registros brutos (collection):** ${formatNumber(aggregation.totalRawRows)}\n`;
+        responseText += `**Linhas Retornadas:** ${formatNumber(aggregation.rows.length)}\n`;
+        responseText += `**Tempo de Execução:** ${formatDuration(procResult.executionTime || 0)}\n\n`;
+
+        if (aggregation.rows.length === 0) {
+          responseText += "Nenhum dado encontrado para os filtros informados.";
+        } else if (args.formatAsTable) {
+          responseText += [
+            "**Resultado**",
+            "",
+            "```",
+            formatQueryResultAsTable(aggregation.rows),
+            "```"
+          ].join("\n");
+        } else {
+          responseText += `**Resultado (JSON):**\n${"```json"}\n${JSON.stringify(aggregation.rows, null, 2)}\n${"```"}`;
+        }
+
+        if (procErrorMsg) {
+          responseText += `\n\n**Mensagem da Procedure:** ${procErrorMsg}`;
+        }
+
+        responseText += `\n\n**Campos permitidos (somatórios):** ${Object.keys(ALLOWED_SUM_FIELDS_SOBRA).join(', ')}`;
+        responseText += `\n**Campos permitidos (agrupamentos):** ${Object.keys(ALLOWED_GROUP_FIELDS_SOBRA).join(', ')}`;
 
         return {
           content: [{ type: "text", text: responseText }],

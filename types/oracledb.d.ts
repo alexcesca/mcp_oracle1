@@ -61,6 +61,11 @@ declare module 'oracledb' {
   export function createPool(poolAttributes: PoolAttributes): Promise<Pool>;
   export function initOracleClient(options?: { libDir?: string }): void;
 
+  export interface ResultSet<T = any> {
+    getRows(numRows: number): Promise<T[]>;
+    close(): Promise<void>;
+  }
+
   export const OUT_FORMAT_OBJECT: number;
   export const OUT_FORMAT_ARRAY: number;
   export const BIND_IN: number;
@@ -68,6 +73,7 @@ declare module 'oracledb' {
   export const BIND_INOUT: number;
   export const STRING: number;
   export const NUMBER: number;
+  export const CURSOR: number;
 
   export let oracleClientVersion: number[];
   export let outFormat: number;

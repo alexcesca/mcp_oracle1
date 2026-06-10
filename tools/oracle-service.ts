@@ -413,6 +413,52 @@ export class OracleService {
     }
   }
 
+  // Executar bloco PL/SQL que retorna um SYS_REFCURSOR como OUT bind (:cur).
+  // Todas as linhas do cursor são lidas antes de fechar a conexão.
+  async executeProcWithCursor(
+    sql: string,
+    binds: any = {},
+    maxCursorRows: number = 10000
+  ): Promise<OracleResult<{ rows: any[]; outBinds: any }>> {
+    const startTime = Date.now();
+    try {
+      const pool = await this.createPool();
+      const connection = await pool.getConnection();
+      try {
+        const result = await connection.execute(sql, binds, {
+          outFormat: oracledb.OUT_FORMAT_OBJECT,
+          autoCommit: false
+        });
+
+        const outBinds = (result.outBinds || {}) as any;
+        let cursorRows: any[] = [];
+
+        if (outBinds.cur) {
+          const cursor: oracledb.ResultSet<any> = outBinds.cur;
+          cursorRows = await cursor.getRows(maxCursorRows);
+          await cursor.close();
+          delete outBinds.cur;
+        }
+
+        return {
+          success: true,
+          data: { rows: cursorRows, outBinds },
+          command: sql,
+          executionTime: Date.now() - startTime
+        };
+      } finally {
+        await connection.close();
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: createFriendlyErrorMessage(error),
+        command: sql,
+        executionTime: Date.now() - startTime
+      };
+    }
+  }
+
   // Fechar pool de conexões
   async close(): Promise<void> {
     if (this.pool) {

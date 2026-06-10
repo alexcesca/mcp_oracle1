@@ -1,0 +1,99 @@
+---
+references:
+  - "File: /tools/register-tools.ts"
+generationTime: 2026-06-09T13:54:53.585Z
+---
+flowchart TD
+    A(["registerAllTools()"]) --> B["server: McpServer\ngetOracleService: fn"]
+
+    B --> T1["Tool 1: oracle_health_check"]
+    B --> T2["Tool 2: oracle_query"]
+    B --> T3["Tool 3: oracle_info"]
+    B --> T4["Tool 4: oracle_resumo_programacao_leite"]
+    B --> T5["Tool 5: oracle_resumo_sobra_racao_aves"]
+
+    %% === Tool 1: Health Check ===
+    subgraph SG1 ["oracle_health_check"]
+        direction TB
+        T1 --> HC1["getOracleService().healthCheck()"]
+        HC1 --> HC2{{"result.success?"}}
+        HC2 -->|"No"| HC3["❌ Return connection error"]
+        HC2 -->|"Yes"| HC4{{"data.connected?"}}
+        HC4 --> HC5{{"poolStatus exists?"}}
+        HC5 -->|"Yes"| HC6["Append pool info"]
+        HC5 -->|"No"| HC7{{"sessionInfo exists?"}}
+        HC6 --> HC7
+        HC7 -->|"Yes"| HC8["Append session info"]
+        HC7 -->|"No"| HC9["✅ Return health text"]
+        HC8 --> HC9
+    end
+
+    %% === Tool 2: oracle_query ===
+    subgraph SG2 ["oracle_query"]
+        direction TB
+        T2 --> Q1{{"isReadOnlyCommand(sql)?"}}
+        Q1 -->|"No"| Q2["⚠️ Return: SELECT only"]
+        Q1 -->|"Yes"| Q3["getOracleService().executeQuery()"]
+        Q3 --> Q4{{"result.success?"}}
+        Q4 -->|"No"| Q5["❌ Return SQL error"]
+        Q4 -->|"Yes"| Q6{{"rows.length == 0?"}}
+        Q6 -->|"Yes"| Q7["Return: no data found"]
+        Q6 -->|"No"| Q8{{"formatAsTable?"}}
+        Q8 -->|"Yes"| Q9["formatQueryResultAsTable()"]
+        Q8 -->|"No"| Q10["JSON.stringify() output"]
+        Q9 --> Q11{{"showMetadata?"}}
+        Q10 --> Q11
+        Q11 -->|"Yes"| Q12["Append column metadata"]
+        Q11 -->|"No"| Q13["✅ Return result text"]
+        Q12 --> Q13
+    end
+
+    %% === Tool 3: oracle_info ===
+    subgraph SG3 ["oracle_info"]
+        direction TB
+        T3 --> I1["getOracleService().getConfig()"]
+        I1 --> I2{{"connectionString set?"}}
+        I2 -->|"Yes"| I3["Append connection string note"]
+        I2 -->|"No"| I4["✅ Return config info"]
+        I3 --> I4
+    end
+
+    %% === Tool 4: oracle_resumo_programacao_leite ===
+    subgraph SG4 ["oracle_resumo_programacao_leite"]
+        direction TB
+        T4 --> L1["resolvePeriod(dtInic, dtFim)"]
+        L1 --> L2["executeCommand: DELETE resumo table"]
+        L2 --> L3{{"deleteResult.success?"}}
+        L3 -->|"No"| L4["❌ Return delete error"]
+        L3 -->|"Yes"| L5[["executeCommand: PK_LAC_OBI.PKB_GERA_PROGLEI"]]
+        L5 --> L6{{"procResult.success?"}}
+        L6 -->|"No"| L7["❌ Return proc error"]
+        L6 -->|"Yes"| L8{{"procErrorCode != 0?"}}
+        L8 -->|"Yes"| L9["❌ Return functional error"]
+        L8 -->|"No"| L10["buildLeiteAggregationQuery()"]
+        L10 --> L11["executeQuery() on resumo table"]
+        L11 --> L12{{"queryResult.success?"}}
+        L12 -->|"No"| L13["❌ Return query error"]
+        L12 -->|"Yes"| L14{{"formatAsTable?"}}
+        L14 -->|"Yes"| L15["formatQueryResultAsTable()"]
+        L14 -->|"No"| L16["JSON output"]
+        L15 --> L17["✅ Return leite summary"]
+        L16 --> L17
+    end
+
+    %% === Tool 5: oracle_resumo_sobra_racao_aves ===
+    subgraph SG5 ["oracle_resumo_sobra_racao_aves"]
+        direction TB
+        T5 --> S1["resolvePeriod(dtInic, dtFim)"]
+        S1 --> S2[["executeProcWithCursor: PK_CAP_OBI.PKB_SOBRA_AVC"]]
+        S2 --> S3{{"procResult.success?"}}
+        S3 -->|"No"| S4["❌ Return proc error"]
+        S3 -->|"Yes"| S5{{"procErrorCode != 0?"}}
+        S5 -->|"Yes"| S6["❌ Return functional error"]
+        S5 -->|"No"| S7["aggregateSobraAvesRows(rawRows)"]
+        S7 --> S8{{"formatAsTable?"}}
+        S8 -->|"Yes"| S9["formatQueryResultAsTable()"]
+        S8 -->|"No"| S10["JSON output"]
+        S9 --> S11["✅ Return sobra aves summary"]
+        S10 --> S11
+    end
